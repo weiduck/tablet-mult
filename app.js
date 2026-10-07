@@ -40,7 +40,7 @@
 
   const TYPES = [
     {
-      stage: "四位×一位（整千）",
+      stage: "四位數×一位數（整千）",
       generate() {
         // a = d000；積 ≤ 9999 → d×b ≤ 9
         const pairs = [];
@@ -53,7 +53,7 @@
       },
     },
     {
-      stage: "四位×一位",
+      stage: "四位數×一位數",
       generate() {
         // 四位皆非 0（與整千／中間有0區隔）；積 < 10000
         return genUntil((force) => {
@@ -70,7 +70,7 @@
       },
     },
     {
-      stage: "四位×一位（中間有0）",
+      stage: "四位數×一位數（中間有0）",
       generate() {
         // 百位或十位為 0（非整千）；個位≠0；積 < 10000
         return genUntil((force) => {
@@ -98,13 +98,13 @@
       },
     },
     {
-      stage: "一位×整十",
+      stage: "一位數×整十",
       generate() {
         return { a: randInt(2, 9), b: randInt(1, 9) * 10 };
       },
     },
     {
-      stage: "一位×二位",
+      stage: "一位數×二位數",
       generate() {
         // 乘數個位≠0（非整十）
         return {
@@ -120,7 +120,7 @@
       },
     },
     {
-      stage: "二位×二位（無進位）",
+      stage: "二位數×二位數（無進位）",
       generate() {
         // 兩數皆二位、個位≠0；各位相乘皆 < 10（無乘進位）
         return genUntil((force) => {
@@ -132,7 +132,7 @@
       },
     },
     {
-      stage: "二位×二位（有進位）",
+      stage: "二位數×二位數（有進位）",
       generate() {
         // 兩數皆二位、個位≠0；至少一處乘進位；積 ≤ 9999（自然成立）
         return genUntil((force) => {

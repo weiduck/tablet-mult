@@ -731,7 +731,7 @@
       `題型 ${index + 1}：完成這個直式`;
     document.getElementById("practiceProblemPill").textContent = `${a} × ${b}`;
     document.getElementById("footerNote").textContent =
-      "每個題型會隨機出題。完成後可練下一題型；點錯沒關係，可以再選一次。";
+      "每個題型會隨機出題。完成後可再練一次；點錯沒關係，可以再選一次。";
     renderStep();
   }
 
@@ -856,8 +856,7 @@
     document.getElementById("completeEq").textContent = `${a} × ${b} = ${product}`;
 
     const nextBtn = document.getElementById("nextCardBtn");
-    nextBtn.textContent =
-      state.cardIndex + 1 >= state.deck.length ? "從頭再練一輪" : "下一題型";
+    nextBtn.textContent = "再練一次";
   }
 
   // ---------- tablet chrome: scroll lock + landscape gate ----------
@@ -936,7 +935,8 @@
       hintBtn.classList.toggle("active", state.hintOpen);
     });
     document.getElementById("nextCardBtn").addEventListener("click", () => {
-      startCard((state.cardIndex + 1) % state.deck.length);
+      // 留在同一題型；startCard 會呼叫 generate() 重抽 a×b
+      startCard(state.cardIndex);
     });
 
     installScrollGuards();

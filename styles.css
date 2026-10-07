@@ -261,6 +261,13 @@ button {
   font-weight: 800;
 }
 
+.problem-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .problem-pill {
   background: var(--yellow);
   border: 3px solid var(--navy);
@@ -270,6 +277,41 @@ button {
   font-weight: 900;
   letter-spacing: 0.04em;
   box-shadow: 3px 3px 0 var(--navy);
+}
+
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  padding: 8px 14px;
+  border: 3px solid var(--navy);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 0.95rem;
+  font-weight: 800;
+  box-shadow: 3px 3px 0 var(--navy);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.refresh-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--navy);
+}
+
+.refresh-icon {
+  display: inline-block;
+  font-size: 1.35rem;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.refresh-label {
+  letter-spacing: 0.02em;
 }
 
 .split {
@@ -665,6 +707,15 @@ button {
   .problem-pill {
     font-size: 1.15rem;
     padding: 6px 14px;
+  }
+  .refresh-btn {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 6px 12px;
+    font-size: 0.88rem;
+  }
+  .refresh-icon {
+    font-size: 1.2rem;
   }
   .deck-jump {
     margin-bottom: 4px;

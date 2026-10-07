@@ -938,6 +938,10 @@
       // 留在同一題型；startCard 會呼叫 generate() 重抽 a×b
       startCard(state.cardIndex);
     });
+    document.getElementById("refreshProblemBtn").addEventListener("click", () => {
+      // 同題型重抽 a×b，進度重置與新題相同
+      startCard(state.cardIndex);
+    });
 
     installScrollGuards();
     updateOrientOverlay();

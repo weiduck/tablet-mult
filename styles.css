@@ -194,15 +194,9 @@ button {
 }
 
 .deck-jump-btn .dj-num {
-  font-size: 0.72rem;
-  font-weight: 900;
-  color: var(--primary);
-}
-
-.deck-jump-btn .dj-prob {
   font-size: 0.95rem;
   font-weight: 900;
-  font-variant-numeric: tabular-nums;
+  color: var(--primary);
 }
 
 .deck-jump-btn .dj-stage {
@@ -663,7 +657,7 @@ button {
     min-height: 40px;
     padding: 4px 8px;
   }
-  .deck-jump-btn .dj-prob {
+  .deck-jump-btn .dj-num {
     font-size: 0.88rem;
   }
   .deck-jump-btn .dj-stage {

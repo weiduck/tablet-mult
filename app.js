@@ -2,24 +2,150 @@
  * 直式乘法練習：點選一步一問引擎
  * 康軒數學4上 第02單元「整數的乘法」(N-4-2) 進度：
  * 四位×一位 → 一位×整十／二位 → 整十×整十 → 二位×二位 → 三／四位×二位
- * 位值說明直式合理性；主場景仍為二位×二位（48×27）逐步引擎。
+ * 位值說明直式合理性；8 題型隨機出題，逐步引擎不變。
  */
 (function () {
   "use strict";
 
   const PLACE_ZH = ["千位", "百位", "十位", "個位"];
 
-  /** 共用練習卡，依康軒 N-4-2 教學順序；stage 供題卡跳轉小標 */
-  const DECK = [
-    { a: 3000, b: 2, stage: "四位×一位（整千）" },
-    { a: 1426, b: 3, stage: "四位×一位" },
-    { a: 2035, b: 4, stage: "四位×一位（中間有0）" },
-    { a: 8, b: 20, stage: "一位×整十" },
-    { a: 6, b: 28, stage: "一位×二位" },
-    { a: 30, b: 50, stage: "整十×整十" },
-    { a: 24, b: 12, stage: "二位×二位（無進位）" },
-    { a: 48, b: 27, stage: "二位×二位（有進位）" },
+  /** 8 題型定義（康軒 N-4-2）；進入／重試時依 constraints 隨機出題 */
+  function randInt(min, max) {
+    return min + Math.floor(Math.random() * (max - min + 1));
+  }
+
+  function pick(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  function digits2(n) {
+    return { t: Math.floor(n / 10) % 10, o: n % 10 };
+  }
+
+  /** 二位×二位：各位相乘是否會產生進位 */
+  function hasMultCarry(a, b) {
+    const A = digits2(a);
+    const B = digits2(b);
+    return A.o * B.o >= 10 || A.t * B.o >= 10 || A.o * B.t >= 10 || A.t * B.t >= 10;
+  }
+
+  function genUntil(fn, maxTries) {
+    maxTries = maxTries || 80;
+    for (let i = 0; i < maxTries; i++) {
+      const r = fn();
+      if (r) return r;
+    }
+    return fn(true);
+  }
+
+  const TYPES = [
+    {
+      stage: "四位×一位（整千）",
+      generate() {
+        // a = d000；積 ≤ 9999 → d×b ≤ 9
+        const pairs = [];
+        for (let d = 1; d <= 9; d++) {
+          for (let b = 2; b <= 9; b++) {
+            if (d * b <= 9) pairs.push({ a: d * 1000, b });
+          }
+        }
+        return pick(pairs);
+      },
+    },
+    {
+      stage: "四位×一位",
+      generate() {
+        // 四位皆非 0（與整千／中間有0區隔）；積 < 10000
+        return genUntil((force) => {
+          const a =
+            randInt(1, 9) * 1000 +
+            randInt(1, 9) * 100 +
+            randInt(1, 9) * 10 +
+            randInt(1, 9);
+          const maxB = Math.min(9, Math.floor(9999 / a));
+          if (maxB < 2) return force ? { a: 1111, b: 2 } : null;
+          const b = randInt(2, maxB);
+          return { a, b };
+        });
+      },
+    },
+    {
+      stage: "四位×一位（中間有0）",
+      generate() {
+        // 百位或十位為 0（非整千）；個位≠0；積 < 10000
+        return genUntil((force) => {
+          const thousands = randInt(1, 9);
+          const ones = randInt(1, 9);
+          let hundreds;
+          let tens;
+          if (Math.random() < 0.5) {
+            hundreds = 0;
+            tens = randInt(0, 9);
+          } else {
+            tens = 0;
+            hundreds = randInt(0, 9);
+          }
+          // 避免退化成整千
+          if (hundreds === 0 && tens === 0) {
+            if (Math.random() < 0.5) hundreds = randInt(1, 9);
+            else tens = randInt(1, 9);
+          }
+          const a = thousands * 1000 + hundreds * 100 + tens * 10 + ones;
+          const maxB = Math.min(9, Math.floor(9999 / a));
+          if (maxB < 2) return force ? { a: 2035, b: 4 } : null;
+          return { a, b: randInt(2, maxB) };
+        });
+      },
+    },
+    {
+      stage: "一位×整十",
+      generate() {
+        return { a: randInt(2, 9), b: randInt(1, 9) * 10 };
+      },
+    },
+    {
+      stage: "一位×二位",
+      generate() {
+        // 乘數個位≠0（非整十）
+        return {
+          a: randInt(2, 9),
+          b: randInt(1, 9) * 10 + randInt(1, 9),
+        };
+      },
+    },
+    {
+      stage: "整十×整十",
+      generate() {
+        return { a: randInt(1, 9) * 10, b: randInt(1, 9) * 10 };
+      },
+    },
+    {
+      stage: "二位×二位（無進位）",
+      generate() {
+        // 兩數皆二位、個位≠0；各位相乘皆 < 10（無乘進位）
+        return genUntil((force) => {
+          const a = randInt(1, 9) * 10 + randInt(1, 9);
+          const b = randInt(1, 9) * 10 + randInt(1, 9);
+          if (!hasMultCarry(a, b)) return { a, b };
+          return force ? { a: 24, b: 12 } : null;
+        });
+      },
+    },
+    {
+      stage: "二位×二位（有進位）",
+      generate() {
+        // 兩數皆二位、個位≠0；至少一處乘進位；積 ≤ 9999（自然成立）
+        return genUntil((force) => {
+          const a = randInt(1, 9) * 10 + randInt(1, 9);
+          const b = randInt(1, 9) * 10 + randInt(1, 9);
+          if (hasMultCarry(a, b)) return { a, b };
+          return force ? { a: 48, b: 27 } : null;
+        });
+      },
+    },
   ];
+
+  const DECK = TYPES;
 
   const CARRY_TIP =
     "進位可記在心裡、手指或紙上；標記時別擋到等一下相加的位置。";
@@ -515,20 +641,20 @@
     const list = document.getElementById("deckJumpList");
     if (!list) return;
     list.innerHTML = "";
-    state.deck.forEach((card, i) => {
+    state.deck.forEach((type, i) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "deck-jump-btn";
       btn.setAttribute("role", "option");
       btn.dataset.index = String(i);
-      const stage = card.stage ? `<span class="dj-stage">${card.stage}</span>` : "";
+      const stage = type.stage
+        ? `<span class="dj-stage">${type.stage}</span>`
+        : "";
       btn.innerHTML =
-        `<span class="dj-num">第 ${i + 1} 題</span>` +
-        `<span class="dj-prob">${card.a} × ${card.b}</span>` +
-        stage;
+        `<span class="dj-num">題型 ${i + 1}</span>` + stage;
       btn.setAttribute(
         "aria-label",
-        `第 ${i + 1} 題 ${card.a} × ${card.b}` + (card.stage ? ` ${card.stage}` : "")
+        `題型 ${i + 1}` + (type.stage ? ` ${type.stage}` : "")
       );
       btn.addEventListener("click", () => startCard(i));
       list.appendChild(btn);
@@ -567,15 +693,18 @@
     state.completed = false;
     state.autoCells = {};
 
-    const card = currentProblem();
-    const { a, b, stage } = card;
+    const type = currentProblem();
+    const generated = type.generate();
+    const a = generated.a;
+    const b = generated.b;
+    const stage = type.stage || "";
     const built = buildSteps(a, b);
     state.steps = built.steps;
     state.stepIndex = 0;
     state.problem = {
       a,
       b,
-      stage: stage || "",
+      stage,
       row1Val: built.row1Val,
       row2Val: built.row2Val,
       hasSecond: built.hasSecond,
@@ -587,10 +716,11 @@
     document.getElementById("stepActive").classList.remove("hidden");
     document.getElementById("stepComplete").classList.add("hidden");
     markDeckJumpCurrent();
-    document.getElementById("practiceTitle").textContent = `第 ${index + 1} 題：完成這個直式`;
+    document.getElementById("practiceTitle").textContent =
+      `題型 ${index + 1}：完成這個直式`;
     document.getElementById("practiceProblemPill").textContent = `${a} × ${b}`;
     document.getElementById("footerNote").textContent =
-      "每張卡只出現一題。完成後再翻下一張；點錯沒關係，可以再選一次。";
+      "每個題型會隨機出題。完成後可練下一題型；點錯沒關係，可以再選一次。";
     renderStep();
   }
 
@@ -716,7 +846,7 @@
 
     const nextBtn = document.getElementById("nextCardBtn");
     nextBtn.textContent =
-      state.cardIndex + 1 >= state.deck.length ? "從頭再練一輪" : "下一張練習卡";
+      state.cardIndex + 1 >= state.deck.length ? "從頭再練一輪" : "下一題型";
   }
 
   // ---------- tablet chrome: scroll lock + landscape gate ----------
@@ -814,7 +944,9 @@
     buildCompletedBoard,
     digitsOf,
     makeChoices,
+    TYPES,
     DECK,
+    hasMultCarry,
   };
 
   if (typeof document !== "undefined" && document.readyState !== "loading") {

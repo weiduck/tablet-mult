@@ -9,7 +9,7 @@
 
   const PLACE_ZH = ["千位", "百位", "十位", "個位"];
 
-  /** 共用練習卡，依康軒 N-4-2 教學順序；stage 供本關小標 */
+  /** 共用練習卡，依康軒 N-4-2 教學順序；stage 供題卡跳轉小標 */
   const DECK = [
     { a: 3000, b: 2, stage: "四位×一位（整千）" },
     { a: 1426, b: 3, stage: "四位×一位" },
@@ -586,13 +586,7 @@
 
     document.getElementById("stepActive").classList.remove("hidden");
     document.getElementById("stepComplete").classList.add("hidden");
-    document.getElementById("cardBadge").textContent = `練習卡 ${index + 1} / ${state.deck.length}`;
     markDeckJumpCurrent();
-    const progChip = document.getElementById("progChip");
-    if (progChip) {
-      progChip.textContent = stage ? `本關：${stage}` : "";
-      progChip.hidden = !stage;
-    }
     document.getElementById("practiceTitle").textContent = `第 ${index + 1} 題：完成這個直式`;
     document.getElementById("practiceProblemPill").textContent = `${a} × ${b}`;
     document.getElementById("footerNote").textContent =

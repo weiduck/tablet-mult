@@ -264,11 +264,6 @@ button {
   border-bottom: 2px dashed #b7d0e0;
 }
 
-.card-top h2 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 800;
-}
 
 .problem-row {
   display: flex;

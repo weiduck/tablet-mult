@@ -145,32 +145,40 @@ button {
 
 .deck-jump {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
   margin-bottom: 8px;
   flex-shrink: 0;
   min-width: 0;
+  width: 100%;
 }
 
 .deck-jump-list {
   display: flex;
-  flex-wrap: nowrap;
+  flex-direction: column;
   gap: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   padding: 2px 2px 4px;
   min-width: 0;
-  scrollbar-width: thin;
+  width: 100%;
+}
+
+.deck-jump-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
 }
 
 .deck-jump-btn {
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
   min-height: 44px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   border: 2.5px solid var(--navy);
   border-radius: 12px;
   background: #fff;
@@ -203,13 +211,14 @@ button {
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--navy-soft);
-  max-width: 15rem;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .deck-jump-btn.deck-jump-random {
+  flex: 0.85 1 0;
   align-items: center;
   justify-content: center;
   background: var(--teal);
@@ -732,7 +741,7 @@ button {
   }
   .deck-jump-btn .dj-stage {
     font-size: 0.62rem;
-    max-width: 11.5rem;
+    max-width: 100%;
   }
   .board-wrap {
     padding: 8px 8px 10px;

@@ -770,6 +770,11 @@
     const list = document.getElementById("deckJumpList");
     if (!list) return;
     list.innerHTML = "";
+    const mid = Math.ceil(state.deck.length / 2);
+    const row1 = document.createElement("div");
+    row1.className = "deck-jump-row";
+    const row2 = document.createElement("div");
+    row2.className = "deck-jump-row";
     state.deck.forEach((type, i) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -786,7 +791,7 @@
         `題型 ${i + 1}` + (type.stage ? ` ${type.stage}` : "")
       );
       btn.addEventListener("click", () => startCard(i));
-      list.appendChild(btn);
+      (i < mid ? row1 : row2).appendChild(btn);
     });
     const randomBtn = document.createElement("button");
     randomBtn.type = "button";
@@ -798,7 +803,9 @@
       const i = Math.floor(Math.random() * n);
       startCard(i);
     });
-    list.appendChild(randomBtn);
+    row2.appendChild(randomBtn);
+    list.appendChild(row1);
+    list.appendChild(row2);
     markDeckJumpCurrent();
   }
 

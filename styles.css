@@ -203,7 +203,7 @@ button {
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--navy-soft);
-  max-width: 12.5rem;
+  max-width: 15rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -342,6 +342,23 @@ button {
   align-items: center;
   max-width: 440px;
   margin: 0 auto;
+}
+
+.board--cols-5,
+.board--cols-6 {
+  gap: 6px 4px;
+}
+
+.board--cols-5 .cell,
+.board--cols-6 .cell {
+  min-height: 46px;
+  height: 46px;
+  font-size: 1.35rem;
+}
+
+.board--cols-5 .place-label,
+.board--cols-6 .place-label {
+  font-size: 0.65rem;
 }
 
 .row-label {

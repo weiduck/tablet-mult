@@ -1,15 +1,17 @@
 /**
  * 直式乘法練習：點選一步一問引擎
- * 康軒數學4上 第02單元「整數的乘法」(N-4-2) 進度：
- * 四位×一位 → 一位×整十／二位 → 整十×整十 → 二位×二位 → 三／四位×二位
- * 位值說明直式合理性；8 題型隨機出題，逐步引擎不變。
+ * 康軒數學4上 第02單元「整數的乘法」(N-4-2) 資料冊 12 學習目標題型
+ * 進位／無進位為題型內隨機難度（非獨立按鈕）。直式板依積位數加寬（可至六位）。
  */
 (function () {
   "use strict";
 
-  const PLACE_ZH = ["千位", "百位", "十位", "個位"];
+  /** 由左到右完整位名（右端為個位）；實際板寬取尾端 numCols 個 */
+  const PLACE_ALL = ["十萬位", "萬位", "千位", "百位", "十位", "個位"];
+  const PLACE_SHORT_ALL = ["十萬", "萬", "千", "百", "十", "個"];
+  const MAX_COLS = 6;
+  const MIN_COLS = 4;
 
-  /** 8 題型定義（康軒 N-4-2）；進入／重試時依 constraints 隨機出題 */
   function randInt(min, max) {
     return min + Math.floor(Math.random() * (max - min + 1));
   }
@@ -18,19 +20,8 @@
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
-  function digits2(n) {
-    return { t: Math.floor(n / 10) % 10, o: n % 10 };
-  }
-
-  /** 二位×二位：各位相乘是否會產生進位 */
-  function hasMultCarry(a, b) {
-    const A = digits2(a);
-    const B = digits2(b);
-    return A.o * B.o >= 10 || A.t * B.o >= 10 || A.o * B.t >= 10 || A.t * B.t >= 10;
-  }
-
   function genUntil(fn, maxTries) {
-    maxTries = maxTries || 80;
+    maxTries = maxTries || 100;
     for (let i = 0; i < maxTries; i++) {
       const r = fn();
       if (r) return r;
@@ -38,79 +29,133 @@
     return fn(true);
   }
 
+  /** 直式乘法過程中，是否出現「乘進位」（寫入進位列的那種） */
+  function hasMultCarry(a, b) {
+    function rowCarry(multDigit) {
+      if (!multDigit) return false;
+      let carry = 0;
+      let n = a;
+      let remaining = Math.floor(Math.log10(a)) + 1;
+      while (remaining > 0) {
+        const d = n % 10;
+        const prod = multDigit * d + carry;
+        const next = Math.floor(prod / 10);
+        n = Math.floor(n / 10);
+        remaining -= 1;
+        if (next > 0 && remaining > 0) return true;
+        carry = next;
+      }
+      return false;
+    }
+    const bOnes = b % 10;
+    const bTens = Math.floor(b / 10) % 10;
+    return rowCarry(bOnes) || (b >= 10 && rowCarry(bTens));
+  }
+
+  /** 題型內隨機要／不要乘進位；找不到則放寬 */
+  function withCarryMix(genPair) {
+    const wantCarry = Math.random() < 0.5;
+    return genUntil((force) => {
+      const r = genPair(force);
+      if (!r) return null;
+      if (force) return r;
+      return hasMultCarry(r.a, r.b) === wantCarry ? r : null;
+    });
+  }
+
+  function fourDigitNoMiddleZero() {
+    return (
+      randInt(1, 9) * 1000 +
+      randInt(1, 9) * 100 +
+      randInt(1, 9) * 10 +
+      randInt(1, 9)
+    );
+  }
+
+  function fourDigitWithMiddleZero() {
+    const thousands = randInt(1, 9);
+    const ones = randInt(0, 9);
+    let hundreds;
+    let tens;
+    const mode = randInt(0, 2);
+    if (mode === 0) {
+      hundreds = 0;
+      tens = randInt(1, 9);
+    } else if (mode === 1) {
+      hundreds = randInt(1, 9);
+      tens = 0;
+    } else {
+      hundreds = 0;
+      tens = 0;
+      // 避免退化成整千（個位也 0）
+      if (ones === 0) return fourDigitWithMiddleZero();
+    }
+    return thousands * 1000 + hundreds * 100 + tens * 10 + ones;
+  }
+
+  function threeDigitNoMiddleZero() {
+    return randInt(1, 9) * 100 + randInt(1, 9) * 10 + randInt(0, 9);
+  }
+
+  function threeDigitWithMiddleZero() {
+    // 中間（十位）為 0，如 203
+    return randInt(1, 9) * 100 + randInt(0, 9);
+  }
+
+  function twoDigitNonZeroOnes() {
+    return randInt(1, 9) * 10 + randInt(1, 9);
+  }
+
+  /** 康軒資料冊 12 學習目標題型 */
   const TYPES = [
     {
-      stage: "四位數×一位數（整千）",
+      stage: "整千×一位",
       generate() {
-        // a = d000；積 ≤ 9999 → d×b ≤ 9
-        const pairs = [];
-        for (let d = 1; d <= 9; d++) {
-          for (let b = 2; b <= 9; b++) {
-            if (d * b <= 9) pairs.push({ a: d * 1000, b });
-          }
-        }
-        return pick(pairs);
-      },
-    },
-    {
-      stage: "四位數×一位數",
-      generate() {
-        // 四位皆非 0（與整千／中間有0區隔）；積 < 10000
-        return genUntil((force) => {
-          const a =
-            randInt(1, 9) * 1000 +
-            randInt(1, 9) * 100 +
-            randInt(1, 9) * 10 +
-            randInt(1, 9);
-          const maxB = Math.min(9, Math.floor(9999 / a));
-          if (maxB < 2) return force ? { a: 1111, b: 2 } : null;
-          const b = randInt(2, maxB);
+        return withCarryMix((force) => {
+          const d = randInt(1, 9);
+          const b = randInt(2, 9);
+          const a = d * 1000;
+          if (force) return { a, b };
+          // 整千×一位：乘進位只看 d×b 是否 ≥10
           return { a, b };
         });
       },
     },
     {
-      stage: "四位數×一位數（中間有0）",
+      stage: "四位×一位",
       generate() {
-        // 百位或十位為 0（非整千）；個位≠0；積 < 10000
-        return genUntil((force) => {
-          const thousands = randInt(1, 9);
-          const ones = randInt(1, 9);
-          let hundreds;
-          let tens;
-          if (Math.random() < 0.5) {
-            hundreds = 0;
-            tens = randInt(0, 9);
-          } else {
-            tens = 0;
-            hundreds = randInt(0, 9);
-          }
-          // 避免退化成整千
-          if (hundreds === 0 && tens === 0) {
-            if (Math.random() < 0.5) hundreds = randInt(1, 9);
-            else tens = randInt(1, 9);
-          }
-          const a = thousands * 1000 + hundreds * 100 + tens * 10 + ones;
-          const maxB = Math.min(9, Math.floor(9999 / a));
-          if (maxB < 2) return force ? { a: 2035, b: 4 } : null;
-          return { a, b: randInt(2, maxB) };
+        return withCarryMix((force) => {
+          const a = fourDigitNoMiddleZero();
+          const b = randInt(2, 9);
+          return { a, b };
         });
       },
     },
     {
-      stage: "一位數×整十",
+      stage: "四位×一位、被乘數中間有0",
+      generate() {
+        return withCarryMix((force) => {
+          const a = fourDigitWithMiddleZero();
+          const b = randInt(2, 9);
+          return { a, b };
+        });
+      },
+    },
+    {
+      stage: "一位×整十",
       generate() {
         return { a: randInt(2, 9), b: randInt(1, 9) * 10 };
       },
     },
     {
-      stage: "一位數×二位數",
+      stage: "一位×二位",
       generate() {
-        // 乘數個位≠0（非整十）
-        return {
-          a: randInt(2, 9),
-          b: randInt(1, 9) * 10 + randInt(1, 9),
-        };
+        return withCarryMix((force) => {
+          return {
+            a: randInt(2, 9),
+            b: twoDigitNonZeroOnes(),
+          };
+        });
       },
     },
     {
@@ -120,26 +165,66 @@
       },
     },
     {
-      stage: "二位數×二位數（無進位）",
+      stage: "二位×二位、積為三位數",
       generate() {
-        // 兩數皆二位、個位≠0；各位相乘皆 < 10（無乘進位）
-        return genUntil((force) => {
-          const a = randInt(1, 9) * 10 + randInt(1, 9);
-          const b = randInt(1, 9) * 10 + randInt(1, 9);
-          if (!hasMultCarry(a, b)) return { a, b };
-          return force ? { a: 24, b: 12 } : null;
+        return withCarryMix((force) => {
+          const a = twoDigitNonZeroOnes();
+          const b = twoDigitNonZeroOnes();
+          const p = a * b;
+          if (p >= 100 && p <= 999) return { a, b };
+          return force ? { a: 12, b: 13 } : null; // 156
         });
       },
     },
     {
-      stage: "二位數×二位數（有進位）",
+      stage: "二位×二位、積為四位數",
       generate() {
-        // 兩數皆二位、個位≠0；至少一處乘進位；積 ≤ 9999（自然成立）
-        return genUntil((force) => {
-          const a = randInt(1, 9) * 10 + randInt(1, 9);
-          const b = randInt(1, 9) * 10 + randInt(1, 9);
-          if (hasMultCarry(a, b)) return { a, b };
-          return force ? { a: 48, b: 27 } : null;
+        return withCarryMix((force) => {
+          const a = twoDigitNonZeroOnes();
+          const b = twoDigitNonZeroOnes();
+          const p = a * b;
+          if (p >= 1000 && p <= 9999) return { a, b };
+          return force ? { a: 48, b: 27 } : null; // 1296
+        });
+      },
+    },
+    {
+      stage: "三位×二位",
+      generate() {
+        return withCarryMix((force) => {
+          const a = threeDigitNoMiddleZero();
+          const b = twoDigitNonZeroOnes();
+          return { a, b };
+        });
+      },
+    },
+    {
+      stage: "三位×二位、被乘數中間有0",
+      generate() {
+        return withCarryMix((force) => {
+          const a = threeDigitWithMiddleZero();
+          const b = twoDigitNonZeroOnes();
+          return { a, b };
+        });
+      },
+    },
+    {
+      stage: "四位×二位",
+      generate() {
+        return withCarryMix((force) => {
+          const a = fourDigitNoMiddleZero();
+          const b = twoDigitNonZeroOnes();
+          return { a, b };
+        });
+      },
+    },
+    {
+      stage: "四位×二位、被乘數中間有0",
+      generate() {
+        return withCarryMix((force) => {
+          const a = fourDigitWithMiddleZero();
+          const b = twoDigitNonZeroOnes();
+          return { a, b };
         });
       },
     },
@@ -164,13 +249,34 @@
   };
 
   // ---------- helpers ----------
-  function digitsOf(n) {
-    return {
-      thousands: Math.floor(n / 1000) % 10,
-      hundreds: Math.floor(n / 100) % 10,
-      tens: Math.floor(n / 10) % 10,
-      ones: n % 10,
-    };
+  function digitsOf(n, numCols) {
+    numCols = numCols || MIN_COLS;
+    const out = [];
+    let x = n;
+    for (let i = 0; i < numCols; i++) {
+      out.unshift(x % 10);
+      x = Math.floor(x / 10);
+    }
+    return out; // length numCols, left = high place
+  }
+
+  function placeLabels(numCols) {
+    return PLACE_ALL.slice(PLACE_ALL.length - numCols);
+  }
+
+  function placeShort(numCols) {
+    return PLACE_SHORT_ALL.slice(PLACE_SHORT_ALL.length - numCols);
+  }
+
+  function colsFor(a, b) {
+    const product = a * b;
+    const need = Math.max(
+      String(product).length,
+      String(a).length,
+      String(b).length,
+      MIN_COLS
+    );
+    return Math.min(MAX_COLS, need);
   }
 
   function shuffle(arr) {
@@ -197,45 +303,55 @@
     return shuffle([...set]);
   }
 
+  function emptyRow(n) {
+    return Array(n).fill(null);
+  }
+
+  function emptyBoolRow(n) {
+    return Array(n).fill(false);
+  }
+
   function emptyBoard(a, b) {
-    const A = digitsOf(a);
-    const B = digitsOf(b);
+    const numCols = colsFor(a, b);
+    const A = digitsOf(a, numCols);
+    const B = digitsOf(b, numCols);
+    const aStr = String(a);
+    const bStr = String(b);
+    const multiplicand = A.map((d, i) => {
+      const placeFromRight = numCols - 1 - i;
+      return placeFromRight < aStr.length ? d : null;
+    });
+    const multiplier = B.map((d, i) => {
+      const placeFromRight = numCols - 1 - i;
+      return placeFromRight < bStr.length ? d : null;
+    });
     return {
       a,
       b,
       product: a * b,
-      carry1: [null, null, null, null],
-      carry2: [null, null, null, null],
-      multiplicand: [
-        a >= 1000 ? A.thousands : null,
-        a >= 100 ? A.hundreds : null,
-        a >= 10 ? A.tens : null,
-        A.ones,
-      ],
-      multiplier: [
-        b >= 1000 ? B.thousands : null,
-        b >= 100 ? B.hundreds : null,
-        b >= 10 ? B.tens : null,
-        B.ones,
-      ],
-      row1: [null, null, null, null],
-      row2: [null, null, null, null],
-      addCarry: [null, null, null, null],
-      answer: [null, null, null, null],
+      numCols,
+      carry1: emptyRow(numCols),
+      carry2: emptyRow(numCols),
+      multiplicand,
+      multiplier,
+      row1: emptyRow(numCols),
+      row2: emptyRow(numCols),
+      addCarry: emptyRow(numCols),
+      answer: emptyRow(numCols),
       slots: {
-        carry1: [false, false, false, false],
-        carry2: [false, false, false, false],
-        row1: [false, false, false, false],
-        row2: [false, false, false, false],
-        addCarry: [false, false, false, false],
-        answer: [false, false, false, false],
+        carry1: emptyBoolRow(numCols),
+        carry2: emptyBoolRow(numCols),
+        row1: emptyBoolRow(numCols),
+        row2: emptyBoolRow(numCols),
+        addCarry: emptyBoolRow(numCols),
+        answer: emptyBoolRow(numCols),
       },
       hasSecondRow: b >= 10,
     };
   }
 
   function markSlot(board, row, col) {
-    if (col >= 0 && col <= 3 && board.slots[row]) {
+    if (col >= 0 && col < board.numCols && board.slots[row]) {
       board.slots[row][col] = true;
     }
   }
@@ -249,10 +365,13 @@
   function buildSteps(a, b) {
     const steps = [];
     const boardPlan = emptyBoard(a, b);
+    const numCols = boardPlan.numCols;
+    const onesCol = numCols - 1;
+    const places = placeLabels(numCols);
 
     const aDigits = [];
     let n = a;
-    let col = 3;
+    let col = onesCol;
     do {
       aDigits.push({ val: n % 10, col });
       n = Math.floor(n / 10);
@@ -284,7 +403,7 @@
           { row: "multiplier", col: multCol },
         ];
 
-        const place = PLACE_ZH[writeCol];
+        const place = places[writeCol];
         let question;
         if (idx === 0 && runningCarry === 0 && !isSecondRow) {
           question = `${multDigit} × ${md.val} = ${prod}，個位先寫幾？`;
@@ -375,10 +494,10 @@
             const d = high % 10;
             markSlot(boardPlan, productRow, hCol);
             steps.push({
-              phase: `${phasePrefix}·${PLACE_ZH[hCol]}：最高位`,
+              phase: `${phasePrefix}·${places[hCol]}：最高位`,
               prompt: "看紅圈相乘，再填藍框",
-              question: `${prod} 還剩左邊的 ${high}，${PLACE_ZH[hCol]}寫幾？`,
-              hint: `乘完後左邊還有 ${high}，把 ${d} 寫在 ${PLACE_ZH[hCol]}（位值對齊）。`,
+              question: `${prod} 還剩左邊的 ${high}，${places[hCol]}寫幾？`,
+              hint: `乘完後左邊還有 ${high}，把 ${d} 寫在 ${places[hCol]}（位值對齊）。`,
               answer: d,
               target: { row: productRow, col: hCol },
               highlights,
@@ -399,8 +518,8 @@
 
       // 第二排：整排乘完後個位補 0（點選一步；因 ×十位＝×n0）
       if (isSecondRow) {
-        markSlot(boardPlan, productRow, 3);
-        written.push({ col: 3, value: 0 });
+        markSlot(boardPlan, productRow, onesCol);
+        written.push({ col: onesCol, value: 0 });
         steps.push({
           phase: `${phasePrefix}·個位：補0`,
           prompt: "第二排乘完了，個位補幾？",
@@ -409,9 +528,9 @@
             `第二排乘完才補 0：這排其實是 ×${tensPlaceValue}` +
             `（不是只 ×${bTens}），所以個位對齊寫 0。`,
           answer: 0,
-          target: { row: productRow, col: 3 },
+          target: { row: productRow, col: onesCol },
           highlights: [{ row: "multiplier", col: multCol }],
-          fill: [{ row: productRow, col: 3, value: 0 }],
+          fill: [{ row: productRow, col: onesCol, value: 0 }],
           autoFills: [],
           kind: "pad-zero",
           tensPlaceValue,
@@ -421,26 +540,29 @@
 
       let value = 0;
       written.forEach((p) => {
-        value += p.value * Math.pow(10, 3 - p.col);
+        value += p.value * Math.pow(10, onesCol - p.col);
       });
       return value;
     }
 
-    const row1Val = addPartialSteps(bOnes, 3, "carry1", "row1", "第一排", false);
+    const multOnesCol = onesCol;
+    const multTensCol = onesCol - 1;
+    const row1Val = addPartialSteps(bOnes, multOnesCol, "carry1", "row1", "第一排", false);
     let row2Val = 0;
     if (hasSecond) {
-      row2Val = addPartialSteps(bTens, 2, "carry2", "row2", "第二排", true);
+      row2Val = addPartialSteps(bTens, multTensCol, "carry2", "row2", "第二排", true);
     }
 
     // ----- 相加（從右往左、逐位） -----
     if (hasSecond) {
       let addCarry = 0;
       const product = a * b;
-      const maxCol = product >= 1000 ? 0 : product >= 100 ? 1 : 2;
+      const prodDigits = String(product).length;
+      const maxCol = numCols - prodDigits;
 
-      for (let c = 3; c >= 0; c--) {
-        const d1 = Math.floor(row1Val / Math.pow(10, 3 - c)) % 10;
-        const d2 = Math.floor(row2Val / Math.pow(10, 3 - c)) % 10;
+      for (let c = onesCol; c >= 0; c--) {
+        const d1 = Math.floor(row1Val / Math.pow(10, onesCol - c)) % 10;
+        const d2 = Math.floor(row2Val / Math.pow(10, onesCol - c)) % 10;
         if (c < maxCol && d1 === 0 && d2 === 0 && addCarry === 0) continue;
 
         const sum = d1 + d2 + addCarry;
@@ -453,11 +575,11 @@
         if (d1 === 0 && d2 === 0 && addCarry > 0) {
           question = `0 + 進位 ${addCarry} = ?`;
         } else if (addCarry > 0) {
-          question = `${d1} + ${d2} + 進位 ${addCarry} = ${sum}，${PLACE_ZH[c]}寫幾？`;
-        } else if (c === 3 && sum < 10) {
+          question = `${d1} + ${d2} + 進位 ${addCarry} = ${sum}，${places[c]}寫幾？`;
+        } else if (c === onesCol && sum < 10) {
           question = `${d1} + ${d2} = ?`;
         } else {
-          question = `${d1} + ${d2} = ${sum}，${PLACE_ZH[c]}寫幾？`;
+          question = `${d1} + ${d2} = ${sum}，${places[c]}寫幾？`;
         }
 
         const fill = [{ row: "answer", col: c, value: writeDigit }];
@@ -475,7 +597,7 @@
           }
         }
 
-        const shortPlace = PLACE_ZH[c];
+        const shortPlace = places[c];
         steps.push({
           phase: `相加·${shortPlace}：從右往左`,
           prompt: "從右往左，逐位相加",
@@ -500,19 +622,19 @@
     }
 
     const product = a * b;
-    if (product >= 1000) markSlot(boardPlan, "answer", 0);
-    if (product >= 100) markSlot(boardPlan, "answer", 1);
-    if (product >= 10) markSlot(boardPlan, "answer", 2);
-    markSlot(boardPlan, "answer", 3);
+    const prodStr = String(product);
+    for (let i = 0; i < prodStr.length; i++) {
+      markSlot(boardPlan, "answer", onesCol - i);
+    }
 
     if (hasSecond) {
       markSlot(boardPlan, "row2", 0);
       markSlot(boardPlan, "addCarry", 0);
-      markSlot(boardPlan, "addCarry", 1);
-      for (let c = 1; c <= 3; c++) markSlot(boardPlan, "row1", c);
+      if (numCols > 1) markSlot(boardPlan, "addCarry", 1);
+      for (let c = 1; c <= onesCol; c++) markSlot(boardPlan, "row1", c);
     }
 
-    return { steps, boardPlan, row1Val, row2Val, hasSecond };
+    return { steps, boardPlan, row1Val, row2Val, hasSecond, numCols };
   }
 
   // ---------- Board rendering ----------
@@ -554,6 +676,13 @@
 
   function renderBoard(container, board, ui) {
     ui = ui || {};
+    const numCols = board.numCols || MIN_COLS;
+    const shorts = placeShort(numCols);
+    container.className = "board board--cols-" + numCols;
+    container.style.gridTemplateColumns =
+      "minmax(68px, 84px) repeat(" + numCols + ", minmax(42px, 1fr))";
+    container.style.maxWidth = numCols <= 4 ? "440px" : numCols === 5 ? "520px" : "600px";
+
     const rows = [
       ["①進位", "carry1"],
       ["②進位", "carry2"],
@@ -575,19 +704,18 @@
       }
       if (!board.hasSecondRow && (row === "row2" || row === "carry2" || row === "addCarry")) {
         html += `<div class="row-label">${label}</div>`;
-        for (let c = 0; c < 4; c++) html += `<div class="cell blank"></div>`;
+        for (let c = 0; c < numCols; c++) html += `<div class="cell blank"></div>`;
         return;
       }
       html += `<div class="row-label">${label}</div>`;
-      for (let c = 0; c < 4; c++) {
+      for (let c = 0; c < numCols; c++) {
         html += cellHtml(row, c, board, ui);
       }
     });
 
-    // 定位板：千百十個
     html += `<div class="row-label">定位</div>`;
-    PLACE_ZH.forEach((p) => {
-      html += `<div class="place-label">${p.replace("位", "")}</div>`;
+    shorts.forEach((p) => {
+      html += `<div class="place-label">${p.replace(/位$/, "")}</div>`;
     });
 
     container.innerHTML = html;
@@ -610,7 +738,7 @@
   }
 
   function buildCompletedBoard(a, b) {
-    const { steps, boardPlan, row1Val, row2Val, hasSecond } = buildSteps(a, b);
+    const { steps, boardPlan, row1Val, row2Val, hasSecond, numCols } = buildSteps(a, b);
     const board = JSON.parse(JSON.stringify(boardPlan));
     const autoCells = {};
     ["carry1", "carry2", "row1", "row2", "addCarry", "answer"].forEach((row) => {
@@ -621,7 +749,7 @@
       applyFill(board, s.autoFills, autoCells);
     });
     if (!hasSecond) {
-      for (let c = 0; c < 4; c++) {
+      for (let c = 0; c < numCols; c++) {
         if (board.row1[c] !== null) {
           board.answer[c] = board.row1[c];
           board.slots.answer[c] = true;
@@ -629,7 +757,8 @@
       }
     }
     board.hasSecondRow = hasSecond;
-    return { board, steps, row1Val, row2Val, hasSecond, autoCells };
+    board.numCols = numCols;
+    return { board, steps, row1Val, row2Val, hasSecond, autoCells, numCols };
   }
 
   // ---------- Practice ----------
@@ -719,9 +848,11 @@
       row1Val: built.row1Val,
       row2Val: built.row2Val,
       hasSecond: built.hasSecond,
+      numCols: built.numCols,
     };
     state.board = cloneBoard(built.boardPlan);
     state.board.hasSecondRow = built.hasSecond;
+    state.board.numCols = built.numCols;
     state.board.slots = JSON.parse(JSON.stringify(built.boardPlan.slots));
 
     document.getElementById("stepActive").classList.remove("hidden");
@@ -731,7 +862,7 @@
       `題型 ${index + 1}：${stage}`;
     document.getElementById("practiceProblemPill").textContent = `${a} × ${b} = ?`;
     document.getElementById("footerNote").textContent =
-      "每個題型會隨機出題。完成後可再練一次；點錯沒關係，可以再選一次。";
+      "每個題型會隨機出題（進位為難度變化）。完成後可再練一次；點錯沒關係，可以再選一次。";
     renderStep();
   }
 
@@ -822,11 +953,11 @@
 
   function showComplete() {
     state.completed = true;
-    const { a, b, row1Val, row2Val, hasSecond } = state.problem;
+    const { a, b, row1Val, row2Val, hasSecond, numCols } = state.problem;
     const product = a * b;
 
     if (!hasSecond) {
-      for (let c = 0; c < 4; c++) {
+      for (let c = 0; c < numCols; c++) {
         if (state.board.row1[c] !== null) {
           state.board.answer[c] = state.board.row1[c];
           state.board.slots.answer[c] = true;
@@ -962,6 +1093,7 @@
     TYPES,
     DECK,
     hasMultCarry,
+    colsFor,
   };
 
   if (typeof document !== "undefined" && document.readyState !== "loading") {

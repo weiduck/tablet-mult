@@ -247,10 +247,9 @@ button {
 
 .card-top {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 14px;
   padding-bottom: 12px;
   border-bottom: 2px dashed #b7d0e0;

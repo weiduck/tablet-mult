@@ -729,7 +729,7 @@
     markDeckJumpCurrent();
     document.getElementById("practiceTitle").textContent =
       `題型 ${index + 1}：${stage}`;
-    document.getElementById("practiceProblemPill").textContent = `${a} × ${b}`;
+    document.getElementById("practiceProblemPill").textContent = `${a} × ${b} = ?`;
     document.getElementById("footerNote").textContent =
       "每個題型會隨機出題。完成後可再練一次；點錯沒關係，可以再選一次。";
     renderStep();

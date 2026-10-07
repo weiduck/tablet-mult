@@ -209,6 +209,23 @@ button {
   text-overflow: ellipsis;
 }
 
+.deck-jump-btn.deck-jump-random {
+  align-items: center;
+  justify-content: center;
+  background: var(--teal);
+  border-color: var(--navy);
+  color: #fff;
+}
+
+.deck-jump-btn.deck-jump-random .dj-num {
+  color: #fff;
+}
+
+.deck-jump-btn.deck-jump-random:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--navy);
+}
+
 /* Practice panel */
 .panel {
   display: flex;

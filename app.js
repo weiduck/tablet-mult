@@ -659,13 +659,24 @@
       btn.addEventListener("click", () => startCard(i));
       list.appendChild(btn);
     });
+    const randomBtn = document.createElement("button");
+    randomBtn.type = "button";
+    randomBtn.className = "deck-jump-btn deck-jump-random";
+    randomBtn.setAttribute("aria-label", "隨機題型");
+    randomBtn.innerHTML = `<span class="dj-num">隨機</span>`;
+    randomBtn.addEventListener("click", () => {
+      const n = state.deck.length;
+      const i = Math.floor(Math.random() * n);
+      startCard(i);
+    });
+    list.appendChild(randomBtn);
     markDeckJumpCurrent();
   }
 
   function markDeckJumpCurrent() {
     const list = document.getElementById("deckJumpList");
     if (!list) return;
-    list.querySelectorAll(".deck-jump-btn").forEach((btn) => {
+    list.querySelectorAll(".deck-jump-btn:not(.deck-jump-random)").forEach((btn) => {
       const i = Number(btn.dataset.index);
       const on = i === state.cardIndex;
       btn.classList.toggle("is-current", on);

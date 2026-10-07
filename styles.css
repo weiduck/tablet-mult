@@ -241,14 +241,6 @@ button {
   min-width: 0;
 }
 
-.deck-jump-label {
-  flex-shrink: 0;
-  font-weight: 900;
-  font-size: 0.88rem;
-  color: var(--primary);
-  white-space: nowrap;
-}
-
 .deck-jump-list {
   display: flex;
   flex-wrap: nowrap;
@@ -758,9 +750,6 @@ button {
   }
   .footer-note {
     display: none;
-  }
-  .deck-jump-label {
-    font-size: 0.8rem;
   }
 }
 

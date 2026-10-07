@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#e8f3fb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="直式乘法" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>直式乘法練習</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@600;700;900&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="rotateOverlay" class="rotate-overlay" hidden aria-live="polite">
+    <div class="rotate-card">
+      <div class="rotate-icon" aria-hidden="true">↻</div>
+      <p class="rotate-title">請把 iPad 轉成橫向</p>
+      <p class="rotate-sub">此練習適合橫向全螢幕使用</p>
+    </div>
+  </div>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">直式乘法練習</div>
+    </header>
+
+    <!-- 練習 -->
+    <section id="panelPractice" class="panel" aria-label="練習">
+      <div class="page-head page-head--bare">
+        <div class="head-chips">
+          <div class="prog-chip" id="progChip">本關：四位×一位（整千）</div>
+          <div class="card-badge" id="cardBadge">練習卡 1 / 10</div>
+        </div>
+      </div>
+
+      <nav class="deck-jump" aria-label="第幾題">
+        <div class="deck-jump-label">第幾題</div>
+        <div class="deck-jump-list" id="deckJumpList" role="listbox" aria-label="練習卡清單"></div>
+      </nav>
+
+      <div class="card scroll-ok">
+        <div class="card-top">
+          <h2 id="practiceTitle">第 1 題：完成這個直式</h2>
+          <div class="problem-pill" id="practiceProblemPill">3000 × 2</div>
+        </div>
+
+        <div class="split" id="practiceSplit">
+          <div>
+            <div class="board-wrap">
+              <p class="board-prompt" id="boardPrompt">看紅圈相乘，再填藍框</p>
+              <div class="board" id="practiceBoard" aria-label="直式乘法格線"></div>
+            </div>
+          </div>
+
+          <div class="step-panel scroll-ok" id="stepPanel">
+            <div class="step-meta">
+              <span id="stepLabel">第 1 步，共 12 步</span>
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-fill" id="progressFill"></div>
+              </div>
+            </div>
+
+            <div id="stepActive">
+              <div class="question-box">
+                <p class="phase" id="phaseLabel">第一排·個位：先乘個位</p>
+                <p class="question" id="questionText">7 × 8 = 56，個位先寫幾？</p>
+                <div class="choices" id="choices" role="group" aria-label="答案選項"></div>
+                <div class="feedback" id="feedback" role="status"></div>
+                <div class="hint-box" id="hintBox"></div>
+                <button type="button" class="hint-btn" id="hintBtn">給我一個提示</button>
+              </div>
+            </div>
+
+            <div id="stepComplete" class="complete-panel hidden">
+              <p class="complete-kicker">直式完成</p>
+              <h3 class="complete-title">每個數字都放對位置</h3>
+              <div class="complete-sum" id="completeSum">336 + 960 = 1296</div>
+              <div class="complete-eq" id="completeEq">48 × 27 = 1296</div>
+              <p class="complete-note">
+                位值對齊：個位排 → 十位排（補 0）→ 從右往左相加。
+              </p>
+              <button type="button" class="primary-btn" id="nextCardBtn">下一張練習卡</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="footer-note" id="footerNote">每張卡只出現一題。完成後再翻下一張；點錯沒關係，可以再選一次。</p>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

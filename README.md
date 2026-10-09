@@ -1,19 +1,20 @@
 # 直式乘法練習
 
-給國小資源班學生（書寫困難）在**平板上用點選**學直式乘法的靜態網頁。開啟後直接進入單題練習。
+[野生的葦達鴨](https://github.com/weiduck) 做的平板練習。給國小資源班學生（書寫困難）用**點選**學直式乘法。開啟後直接進入單題練習。
+
+線上版：[weiduck.github.io/tablet-mult](https://weiduck.github.io/tablet-mult/)
 
 十二個**題型**依循 **康軒數學 4 上 第 02 單元「整數的乘法」資料冊學習目標**（課綱 N-4-2：較大位數之乘除計算；以**位值**說明直式合理性）。進入題型或重試時，會依該題型約束**隨機出題**；**有／無乘進位是題型內的難度變化**（不是獨立按鈕）。
 
 ## 怎麼打開
 
-不需要安裝或建置。任選一種：
+不需要安裝或建置。
 
-1. **直接開檔**：用瀏覽器開啟本資料夾的 `index.html`
-2. **本機靜態伺服器**（若瀏覽器擋 `file://` 字型／manifest）：
+1. **線上**：用瀏覽器開 [weiduck.github.io/tablet-mult](https://weiduck.github.io/tablet-mult/)
+2. **直接開檔**：用瀏覽器開啟本資料夾的 `index.html`
+3. **本機靜態伺服器**（若瀏覽器擋 `file://` 字型／manifest）：在本資料夾執行
 
 ```bash
-cd /Users/jerry/Projects/tablet-mult
-# 或在本機對應路徑
 python3 -m http.server 8765
 ```
 
@@ -21,7 +22,7 @@ python3 -m http.server 8765
 
 ### 加到 iPad 主畫面（像 App 一樣全螢幕）
 
-1. 用 **Safari** 打開本站（建議用本機伺服器或可連線的 URL，不要用 `file://`）
+1. 用 **Safari** 打開 [線上版](https://weiduck.github.io/tablet-mult/)（不要用 `file://`）
 2. 點底部分享按鈕 → **加入主畫面**
 3. 名稱會是「直式乘法」；加入後從主畫面圖示開啟
 4. 請把 iPad **轉成橫向**；直向時會出現「請把 iPad 轉成橫向」提示

@@ -6,7 +6,7 @@
  * - 改了檔案清單或快取策略時，把 CACHE_VERSION 加 1（舊快取會在 activate 時刪掉）
  * 路徑都是相對於 sw.js，所以放在 GitHub Pages 的 /tablet-mult/ 底下也能用。
  */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const CACHE_PREFIX = "tablet-mult-";
 const CACHE_NAME = CACHE_PREFIX + "v" + CACHE_VERSION;
 

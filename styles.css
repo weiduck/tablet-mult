@@ -102,8 +102,8 @@ button {
 
 .deck-jump-list {
   display: grid;
-  /* 直向、橫向都一樣：題型 1–6、7–12 兩列，「隨機」是第 7 欄、跨兩列的窄按鈕 */
-  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(64px, 0.6fr);
+  /* 直向、橫向都一樣：6 欄 × 2 列（題型 1–6、7–12），填滿整列寬度 */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
   padding: 2px 2px 3px;
   min-width: 0;
@@ -156,20 +156,6 @@ button {
   max-width: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
-}
-
-.deck-jump-btn.deck-jump-random {
-  grid-column: 7;
-  grid-row: 1 / span 2;
-  align-items: center;
-  background: var(--teal);
-  border-color: var(--navy);
-  color: #fff;
-}
-
-.deck-jump-btn.deck-jump-random .dj-num {
-  color: #fff;
-  font-size: 1.05rem;
 }
 
 /* —— 練習區 —— */
@@ -713,14 +699,10 @@ button {
   }
 }
 
-/* 很窄的直向（手機）：題型每列 3 個，「隨機」自成一列 */
+/* 很窄的直向（手機）：題型每列 3 個（共 4 列） */
 @media (max-width: 600px) {
   .deck-jump-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .deck-jump-btn.deck-jump-random {
-    grid-column: 1 / -1;
-    grid-row: auto;
   }
   .choices {
     grid-template-columns: 1fr 1fr;

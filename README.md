@@ -28,10 +28,10 @@ python3 -m http.server 8765
 
 ### 離線使用與更新
 
-- 在 `https:`（線上版）或 `http://localhost` 開過一次後，`sw.js` 會把 App 外殼（`./`、`index.html`、`styles.css`、`app.js`、`mult-core.js`、`manifest.webmanifest`、三個圖示）存進快取 `tablet-mult-v2`，之後沒有網路也能開。
+- 在 `https:`（線上版）或 `http://localhost` 開過一次後，`sw.js` 會把 App 外殼（`./`、`index.html`、`styles.css`、`app.js`、`mult-core.js`、`manifest.webmanifest`、三個圖示）存進快取 `tablet-mult-v3`，之後沒有網路也能開。
 - 字型（Google Fonts 的 Nunito／Noto Sans TC）是跨來源資源，**不快取**；離線時改用系統字型（PingFang TC、Heiti TC、微軟正黑體、system-ui 等）。
 - **怎麼拿到新版**：`index.html` 是 network-first（連得上就拿新的）；其他檔案是 stale-while-revalidate（先用快取、背景下載新版）。所以有網路時**重新整理一次**會在背景更新 CSS／JS，**再重新整理一次**才會用上新檔。若 `sw.js` 本身改了，新的 service worker 會在第一次重新整理時安裝並接手、清掉舊快取，同樣再重新整理一次即可。
-- 維護者：改了 `sw.js` 的檔案清單或快取策略時，把 `sw.js` 裡的 `CACHE_VERSION` 加 1（目前是 `2`）；舊版本快取（`tablet-mult-v*`）會在新 service worker 啟用時刪掉，不會動到同網域其他練習的快取。
+- 維護者：改了 `sw.js` 的檔案清單或快取策略時，把 `sw.js` 裡的 `CACHE_VERSION` 加 1（目前是 `3`）；舊版本快取（`tablet-mult-v*`）會在新 service worker 啟用時刪掉，不會動到同網域其他練習的快取。
 
 ### 加到 iPad 主畫面（像 App 一樣全螢幕）
 
@@ -44,7 +44,7 @@ python3 -m http.server 8765
 
 ### 觸控與無障礙
 
-- 所有按鈕（題型、隨機、↻、四個選項、提示、再練一次）高度 ≥ **56px**（CSS `--tap-min`）。
+- 所有按鈕（題型、↻、四個選項、提示、再練一次）高度 ≥ **56px**（CSS `--tap-min`）。
 - 直式板的格子依可用空間自動縮放，介於 **44–64px**，不會小於 44px；放不下時改在直式板區內捲動，目前要填的格子會自動捲進畫面。
 - 題型按鈕的類型說明字級 0.8rem，可換行，不截斷（例如「四位×二位、被乘數中間有0」完整顯示）。
 - 題型清單是一般按鈕群組（`role="group"`），目前題型用 `aria-pressed="true"` 標示；選項是 `role="group"`（「答案選項」）；目前要填的格子有 `aria-label`，例如「第一排 十位，目前要填」；回饋區 `role="status"`、`aria-live="polite"`；提示按鈕帶 `aria-expanded`。
@@ -71,7 +71,7 @@ python3 -m http.server 8765
 
 每個題型的約束在 `mult-core.js` 寫成明確的判斷式 `MultCore.checkType(i, a, b)`（`i` 從 0 起算：題型 N ＝ `i = N − 1`），產生器出的題一定通過，並由 `npm test` 檢查。
 
-跳轉鈕直向、橫向都排成兩列：上列題型 1–6、下列題型 7–12，「隨機」是右邊跨兩列的窄按鈕（820px 寬時整區約 130px 高）；很窄（≤ 600px）改成每列 3 個，「隨機」自成一列。標示「題型 1」…「題型 12」並附類型說明；「隨機」可抽一題型並重新出題。「再練一次」與 ↻ 皆**留在同一題型**重抽數字。
+跳轉鈕直向、橫向都排成 6 欄 × 2 列、填滿整列寬度：上列題型 1–6、下列題型 7–12；很窄（≤ 600px）改成每列 3 個（共 4 列）。標示「題型 1」…「題型 12」並附類型說明。「再練一次」與 ↻ 皆**留在同一題型**重抽數字。
 
 **進位**：在適用題型內，產生器會隨機偏好有／無乘進位（找不到則放寬），不再拆成「有進位／無進位」兩個題型。「乘進位」指寫進①②進位格的那種。題型 1（整千×一位）、4（一位×整十）、5（一位×二位）、6（整十×整十）的被乘數只有最高位非 0，最高位乘出的十位直接寫進該排（如 3000×4＝12000 只是積多一位），板上不會有進位格，所以這四個題型**不適用**有／無乘進位，直接隨機出題。
 
@@ -91,7 +91,7 @@ python3 -m http.server 8765
 |------|------|
 | 開啟 | 直接進入「單題練習」，無示範分頁；直向、橫向皆可 |
 | 版面 | 橫向：直式板左、步驟區右；直向：直式板上（至少 38% 高）、步驟區下（依內容長高，放不下就內部捲動；四個選項排成一列；不顯示底部說明文字） |
-| 題型 | 十二題型跳轉＋「隨機」（按鈕 ≥ 56px）：兩列各 6 個＋右側跨兩列的「隨機」；≤ 600px 每列 3 個；每次進入／重試隨機出題 |
+| 題型 | 十二題型跳轉（按鈕 ≥ 56px）：兩列各 6 個；≤ 600px 每列 3 個；每次進入／重試隨機出題 |
 | 直式板 | 只畫這題用得到的列：進位／被乘數／乘數／（第一排／第二排／加法進位）／答案；底列定位；欄數隨積加寬；格子 44–64px 依空間縮放，放不下就在板內捲動 |
 | 格狀態 | 空＝虛線；目前＝黃底粗藍框；已填＝淡綠；紅圈＝當下相乘（或相加）的數；虛線紅圈＝要加上的進位 |
 | 步驟區 | 階段（標位值）＋題目（不給積）、四選一（橫向 2×2、直向 1×4、≤ 600px 窄螢幕 2×2）、三層提示、對／錯回饋 |
@@ -109,7 +109,7 @@ python3 -m http.server 8765
 - `styles.css` — 粗獷／貼紙感樣式；直向／橫向響應式版面、觸控目標 ≥ 56px、鎖橡皮筋捲動、safe-area、`prefers-reduced-motion`、系統字型備援
 - `mult-core.js` — 純邏輯（不碰 DOM，UMD）：12 題型約束 `checkType`／產生器 `generate`（可注入亂數 `makeRng(seed)`）、一步一問步驟引擎 `buildSteps`（題目、三層提示 `hints`、答對說明 `reveal`、要顯示的列 `visibleRows`）、完成板、常見錯誤選項 `buildChoices`；瀏覽器為 `window.MultCore`（舊名 `window.MuseMult` 指向同一物件），Node 可 `require`
 - `app.js` — 畫面：直式板繪製與 `fitBoard()` 格子縮放、題型跳轉、作答流程、ARIA 標示、觸控鎖（不擋雙指縮放）、註冊 service worker（使用 `MultCore`；須在 `mult-core.js` 之後載入）
-- `sw.js` — 離線用 service worker：快取 `tablet-mult-v2`（`CACHE_VERSION = 2`）；`index.html`／頁面導覽 network-first，其他同源外殼檔 stale-while-revalidate；跨來源（Google Fonts）不攔不快取；啟用時刪掉舊版 `tablet-mult-v*` 快取；路徑全為相對路徑（GitHub Pages `/tablet-mult/` 底下可用）
+- `sw.js` — 離線用 service worker：快取 `tablet-mult-v3`（`CACHE_VERSION = 3`）；`index.html`／頁面導覽 network-first，其他同源外殼檔 stale-while-revalidate；跨來源（Google Fonts）不攔不快取；啟用時刪掉舊版 `tablet-mult-v*` 快取；路徑全為相對路徑（GitHub Pages `/tablet-mult/` 底下可用）
 - `test/generator.test.js` — 產生器／步驟引擎檢查（Node 內建 `node:assert`，無相依套件）
 - `package.json` — 只有 `npm test` 指令，沒有相依套件
 - `manifest.webmanifest` — 主畫面名稱「直式乘法」、`orientation: any`（直橫皆可）、standalone

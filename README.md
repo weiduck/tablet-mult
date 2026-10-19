@@ -43,13 +43,15 @@ python3 -m http.server 8765
 | 7 | 二位×二位、積為三位數 | 兩數二位、個位≠0；積 100–999（如 12×13） |
 | 8 | 二位×二位、積為四位數 | 兩數二位、個位≠0；積 1000–9999（如 48×27） |
 | 9 | 三位×二位 | 被乘數三位且十位≠0；乘數二位個位≠0（如 386×59） |
-| 10 | 三位×二位、被乘數中間有0 | 被乘數十位為 0（如 203×45） |
+| 10 | 三位×二位、被乘數中間有0 | 被乘數十位為 0、個位≠0（不出整百如 500）；乘數二位個位≠0（如 203×45） |
 | 11 | 四位×二位 | 被乘數四位且百／十皆非 0；乘數二位個位≠0（如 2345×67） |
-| 12 | 四位×二位、被乘數中間有0 | 被乘數百位或十位為 0（如 1005×23） |
+| 12 | 四位×二位、被乘數中間有0 | 被乘數百位或十位為 0、非整千；乘數二位個位≠0（如 1005×23） |
+
+每個題型的約束在 `mult-core.js` 寫成明確的判斷式 `MultCore.checkType(i, a, b)`（`i` 從 0 起算：題型 N ＝ `i = N − 1`），產生器出的題一定通過，並由 `npm test` 檢查。
 
 跳轉鈕分兩列顯示（上列題型 1–6、下列題型 7–12，「隨機」在第二列末端），標示「題型 1」…「題型 12」並附類型說明；「隨機」可抽一題型並重新出題。「再練一次」與 ↻ 皆**留在同一題型**重抽數字。
 
-**進位**：在適用題型內，產生器會隨機偏好有／無乘進位（找不到則放寬），不再拆成「有進位／無進位」兩個題型。
+**進位**：在適用題型內，產生器會隨機偏好有／無乘進位（找不到則放寬），不再拆成「有進位／無進位」兩個題型。「乘進位」指寫進①②進位格的那種。題型 1（整千×一位）、4（一位×整十）、5（一位×二位）、6（整十×整十）的被乘數只有最高位非 0，最高位乘出的十位直接寫進該排（如 3000×4＝12000 只是積多一位），板上不會有進位格，所以這四個題型**不適用**有／無乘進位，直接隨機出題。
 
 **直式板寬度**：積為四位數以內用四欄（千百十個）；五／六位數積自動加寬（萬／十萬），以容納三／四位×二位等題型。
 
@@ -73,7 +75,10 @@ python3 -m http.server 8765
 
 - `index.html` — 結構、繁中文案、PWA／主畫面 meta
 - `styles.css` — 粗獷／貼紙感樣式；橫向全螢幕、鎖捲動、safe-area
-- `app.js` — 一步一問引擎（位值階段／提示）＋ 12 題型產生器／方向提示／觸控鎖
+- `mult-core.js` — 純邏輯（不碰 DOM，UMD）：12 題型約束 `checkType`／產生器 `generate`（可注入亂數 `makeRng(seed)`）、一步一問步驟引擎 `buildSteps`、完成板、選項；瀏覽器為 `window.MultCore`（舊名 `window.MuseMult` 指向同一物件），Node 可 `require`
+- `app.js` — 畫面：直式板繪製、題型跳轉、作答流程、方向提示／觸控鎖（使用 `MultCore`；須在 `mult-core.js` 之後載入）
+- `test/generator.test.js` — 產生器／步驟引擎檢查（Node 內建 `node:assert`，無相依套件）
+- `package.json` — 只有 `npm test` 指令，沒有相依套件
 - `manifest.webmanifest` — 主畫面名稱「直式乘法」、landscape、standalone
 - `apple-touch-icon.png` / `icon-192.png` / `icon-512.png` — 圖示
 - `README.md` — 本說明
@@ -87,11 +92,20 @@ python3 -m http.server 8765
 ## 快速檢查
 
 ```bash
-node --check app.js
-# 在瀏覽器 Console 也可：
-# MuseMult.buildSteps(48,27).steps.length  → 12
-# MuseMult.buildCompletedBoard(48,27).board.answer → [1,2,9,6]
-# MuseMult.TYPES.length → 12
-# MuseMult.TYPES.map((t,i) => (i+1)+": "+t.stage+" → "+JSON.stringify(t.generate()))
-# MuseMult.colsFor(2345,67)  → 6（積 157115）
+node --check mult-core.js && node --check app.js
+npm test   # 或 node test/generator.test.js；不需 npm install
+```
+
+`npm test` 會：每個題型用固定種子抽 1000 題檢查 `checkType`、欄寬、有／無乘進位比例；2000 組跨題型隨機題＋指定題（48×27、2035×4、1005×23、3000×2、8×20、30×50、6×28、12×13、203×45、2345×67）檢查答案列＝a×b、每步答案是 0–9 一位數、每格最多填一次、所有虛線格最後都會填上。失敗時結束碼非 0。
+
+在瀏覽器 Console 也可（`MuseMult` 與 `MultCore` 是同一物件）：
+
+```js
+MultCore.buildSteps(48,27).steps.length  // → 12
+MultCore.buildCompletedBoard(48,27).board.answer  // → [1,2,9,6]
+MultCore.TYPES.length  // → 12
+MultCore.TYPES.map((t,i) => (i+1)+": "+t.stage+" → "+JSON.stringify(MultCore.generate(i)))
+MultCore.generate(9, { rng: MultCore.makeRng(42), carry: true })  // 可重現；carry 指定偏好
+MultCore.checkType(9, 500, 45)  // → false（題型 10 不出整百）
+MultCore.colsFor(2345,67)  // → 6（積 157115）
 ```

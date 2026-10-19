@@ -1,7 +1,8 @@
 /**
  * 直式乘法練習：純邏輯（不碰 DOM）
  * - 12 題型（康軒數學4上 第02單元「整數的乘法」N-4-2）約束 checkType、隨機出題 generate
- * - 步驟引擎 buildSteps、完成板 buildCompletedBoard、選項 makeChoices
+ * - 步驟引擎 buildSteps（題目不先給乘積、每步三層提示 hints[0..2]）、完成板 buildCompletedBoard
+ * - 選項 buildChoices：正解＋常見錯誤（忘了進位、寫成十位…）當誘答，附錯因回饋
  * - UMD：瀏覽器 → window.MultCore（舊名 window.MuseMult 為同一物件）；Node → require('./mult-core.js')
  * - 所有隨機都走 rng()（預設 Math.random）；可用 makeRng(seed) 取得可重現的亂數
  *
@@ -31,10 +32,17 @@
    */
   const CARRY_TRIES = 2000;
 
-  const CARRY_TIP =
-    "進位可記在心裡、手指或紙上；標記時別擋到等一下相加的位置。";
+  /** 每張卡只在第一個進位步驟顯示一次（之後只在提示裡提） */
+  const CARRY_TIP = "進位的數字寫在上方小格，下一步記得加上它。";
 
   const BOARD_ROWS = ["carry1", "carry2", "row1", "row2", "addCarry", "answer"];
+
+  /** 直式板由上到下的列順序（含被乘數、乘數）；實際顯示看 board.visibleRows */
+  const RENDER_ROWS = [
+    "carry1", "carry2", "multiplicand", "multiplier", "row1", "row2", "addCarry", "answer",
+  ];
+
+  const HINT_LEVELS = 3;
 
   // ---------- 亂數 ----------
   /** mulberry32：可重現的 [0, 1) 亂數 */
@@ -62,26 +70,130 @@
     return a;
   }
 
-  /** 四選一：正解＋鄰近數字，再補隨機數字 */
-  function makeChoices(correct, rng) {
+  // ---------- 選項（常見錯誤當誘答） ----------
+  /** 錯誤類型 → 回饋文字（依步驟內容） */
+  function errorText(key, step) {
+    const c = step.calc || {};
+    const place = step.place || "這一格";
+    switch (key) {
+      case "forgot-carry":
+        return `好像忘了加進位 ${c.carryIn}。`;
+      case "carry-twice":
+        return "進位只要加一次喔。";
+      case "tens-digit":
+        return `這是${c.op === "add" ? "加" : "乘"}出來的十位數字，藍框要寫個位的數字。`;
+      case "ones-digit":
+        return c.part === "high"
+          ? `這是個位的數（剛才寫過了），${place}要寫乘出來的十位數字。`
+          : "這是個位的數，要進位的是十位的數字。";
+      case "added":
+        return "這一步要用「乘」的喔。";
+      case "multiplied":
+        return "這一步要用「加」的喔。";
+      case "neighbour":
+        return "這好像是隔壁那一位算出來的，看紅圈的位置再算一次。";
+      case "no-carry":
+        return "加起來超過 9 了，要進位喔。";
+      case "zero-first":
+        return "0 等一下才補，這一格先寫相乘的結果。";
+      case "row-shift":
+        return `乘出來是「幾個${c.unit || "十"}」，想想${place}上有幾個${unitOf(place)}。`;
+      default:
+        return null;
+    }
+  }
+
+  /** 依步驟算出「常見錯誤」候選（依優先順序；可能重複或等於正解，之後再篩） */
+  function errorCandidates(step) {
+    const c = step.calc;
+    if (!c) return [];
+    const out = [];
+    const add = (value, key) => {
+      if (Number.isInteger(value) && value >= 0 && value <= 9) out.push({ value, key });
+    };
+    const ones = (v) => v % 10;
+    const tens = (v) => Math.floor(v / 10) % 10;
+
+    if (c.op === "mul" || c.op === "add") {
+      const isMul = c.op === "mul";
+      const base = isMul ? c.d * c.m : c.d1 + c.d2;
+      const other = isMul ? c.d + c.m : c.d1 * c.d2;
+      const otherKey = isMul ? "added" : "multiplied";
+      const pick = c.part === "ones" ? ones : tens;
+      const value = base + c.carryIn;
+      if (c.part === "ones") {
+        if (c.carryIn) add(ones(base), "forgot-carry");
+        if (value >= 10) add(tens(value), "tens-digit");
+        if (c.shortcut) add(0, "zero-first");
+      } else {
+        add(ones(value), "ones-digit");
+        if (c.carryIn) add(tens(base), "forgot-carry");
+        if (c.op === "add") add(0, "no-carry");
+      }
+      if (c.carryIn) add(pick(base + 2 * c.carryIn), "carry-twice");
+      (c.neighbours || []).forEach((n) => add(pick(n + c.carryIn), "neighbour"));
+      add(pick(other + c.carryIn), otherKey);
+    } else if (c.op === "zero") {
+      add(ones(c.rowDigits), "row-shift");
+      add(c.m, "row-shift");
+    }
+    return out;
+  }
+
+  /**
+   * 四選一：正解＋最多 3 個常見錯誤；不夠才用 ±1、9−x、±2、隨機補。
+   * step 可以是步驟物件或單純的正解數字（只用補數）。
+   * 回傳 { values: 四個不同的 0–9（已洗牌）, why: { 錯的數字: 錯誤回饋文字 } }
+   */
+  function buildChoices(step, rng) {
     rng = rng || Math.random;
-    const set = new Set([correct]);
-    const near = [correct - 1, correct + 1, correct - 2, correct + 2, 9 - correct]
-      .map((x) => ((x % 10) + 10) % 10)
-      .filter((x) => x !== correct);
-    for (const n of near) {
-      if (set.size >= 4) break;
-      set.add(n);
+    if (typeof step === "number") step = { answer: step };
+    const correct = step.answer;
+    const picked = [correct];
+    const why = {};
+    errorCandidates(step).forEach(({ value, key }) => {
+      if (picked.length >= 4 || picked.includes(value)) return;
+      picked.push(value);
+      const text = errorText(key, step);
+      if (text) why[value] = text;
+    });
+    const fillers = [correct - 1, correct + 1, 9 - correct, correct - 2, correct + 2]
+      .map((x) => ((x % 10) + 10) % 10);
+    for (const n of fillers) {
+      if (picked.length >= 4) break;
+      if (!picked.includes(n)) picked.push(n);
     }
-    while (set.size < 4) {
-      set.add(Math.floor(rng() * 10));
+    while (picked.length < 4) {
+      const n = Math.floor(rng() * 10);
+      if (!picked.includes(n)) picked.push(n);
     }
-    return shuffle([...set], rng);
+    return { values: shuffle(picked, rng), why };
+  }
+
+  /** 只要四個選項（舊介面） */
+  function makeChoices(step, rng) {
+    return buildChoices(step, rng).values;
+  }
+
+  /** 沒有對應錯誤類型時的通用回饋 */
+  function genericWrong(step) {
+    if (step.kind === "add" || step.kind === "add-carry") {
+      return "還差一點。看紅圈，把這一行的數加起來再選。";
+    }
+    if (step.kind === "pad-zero") {
+      return "還差一點。這一排是「幾個十」（或幾個百），看看藍框的位值再選。";
+    }
+    return "還差一點。看紅圈相乘，再看看藍框的位值。";
   }
 
   // ---------- 數字小工具 ----------
   function lenOf(n) {
     return String(n).length;
+  }
+
+  /** 「十位」→「十」、「個位」→「一」（說「幾個十」「幾個一」用） */
+  function unitOf(place) {
+    return place === "個位" ? "一" : place.replace(/位$/, "");
   }
 
   /** place 0 = 個位、1 = 十位… */
@@ -409,6 +521,7 @@
     const B = digitsOf(b, numCols);
     const aStr = String(a);
     const bStr = String(b);
+    const mode = boardMode(a, b);
     const multiplicand = A.map((d, i) => {
       const placeFromRight = numCols - 1 - i;
       return placeFromRight < aStr.length ? d : null;
@@ -438,8 +551,62 @@
         addCarry: emptyBoolRow(numCols),
         answer: emptyBoolRow(numCols),
       },
-      hasSecondRow: b >= 10,
+      hasSecondRow: mode === "two-row",
+      mode,
+      visibleRows: visibleRowsFor(a, mode),
     };
+  }
+
+  /** 末尾有幾個 0（a 必為正整數） */
+  function trailingZeros(n) {
+    let z = 0;
+    while (n % 10 === 0) {
+      n /= 10;
+      z += 1;
+    }
+    return z;
+  }
+
+  /** 只有最高位非 0（如 8、30、3000） */
+  function singleNonZero(n) {
+    return isInt(n) && n >= 1 && n / Math.pow(10, trailingZeros(n)) <= 9;
+  }
+
+  /**
+   * 教冊捷徑：「整千×一位」（3000×2）、「一位×整十」（8×20）、「整十×整十」（30×50）：
+   * 先算兩個非 0 數字相乘（幾個千／十／百），再補上 0 的數量；直式只有一排答案。
+   */
+  function isShortcut(a, b) {
+    return (
+      singleNonZero(a) && singleNonZero(b) && b <= 90 &&
+      trailingZeros(a) + trailingZeros(b) >= 1
+    );
+  }
+
+  /**
+   * one-row：乘數一位，乘出來那一排就是答案（不顯示第二排、加法進位）
+   * shortcut：整十／整千捷徑（見 isShortcut），也只有一排答案
+   * two-row：第一排＋第二排，再相加
+   */
+  function boardMode(a, b) {
+    if (isShortcut(a, b)) return "shortcut";
+    return b >= 10 ? "two-row" : "one-row";
+  }
+
+  /** 被乘數至少兩個非 0 數字才可能有乘進位（只有最高位非 0 → 乘出的十位直接寫進該排） */
+  function multCarryPossible(a) {
+    return String(a).replace(/0/g, "").length >= 2;
+  }
+
+  /** 要畫出來的列（由上到下）；用不到的列整列隱藏 */
+  function visibleRowsFor(a, mode) {
+    const carry = mode !== "shortcut" && multCarryPossible(a);
+    return RENDER_ROWS.filter((row) => {
+      if (row === "carry1") return carry;
+      if (row === "carry2") return carry && mode === "two-row";
+      if (row === "row1" || row === "row2" || row === "addCarry") return mode === "two-row";
+      return true;
+    });
   }
 
   function markSlot(board, row, col) {
@@ -448,21 +615,229 @@
     }
   }
 
+  // ---------- 題目與三層提示（第 1 層只講概念、第 2 層算式、第 3 層才說寫幾） ----------
+  function mulExpr(c) {
+    return `${c.d} × ${c.m}` + (c.carryIn ? ` + 進位 ${c.carryIn}` : "");
+  }
+
+  function mulWork(c) {
+    const p = c.d * c.m;
+    return `${c.d} × ${c.m} = ${p}` + (c.carryIn ? `，${p} + ${c.carryIn} = ${p + c.carryIn}` : "");
+  }
+
+  function addExpr(c) {
+    const terms = c.terms.map(String);
+    if (c.carryIn) terms.push(`進位 ${c.carryIn}`);
+    return terms.join(" + ");
+  }
+
+  function addWork(c) {
+    const s = c.d1 + c.d2;
+    const base = c.terms.length >= 2 ? `${c.terms.join(" + ")} = ${s}` : null;
+    if (!c.carryIn) return base || `只有 ${s}`;
+    if (!c.terms.length) return `只有進位 ${c.carryIn}`;
+    return (base ? `${base}，` : "") + `${s} + ${c.carryIn} = ${s + c.carryIn}`;
+  }
+
+  /** 整十／整千捷徑：哪個數是整幾（不含數字，第 1 層提示用） */
+  function shortcutWhat(c) {
+    const whole = (z) => "整" + ["", "十", "百", "千"][z];
+    if (c.za && c.zb) return c.za === c.zb ? `兩個數都是${whole(c.za)}` : `被乘數是${whole(c.za)}、乘數是${whole(c.zb)}`;
+    return c.za ? `被乘數是${whole(c.za)}` : `乘數是${whole(c.zb)}`;
+  }
+
+  /** 要補幾個 0、是誰後面的 0（第 3 層提示用） */
+  function shortcutZeros(c) {
+    if (c.za && c.zb) return ` ${c.zeros} 個 0`;
+    return c.za ? `被乘數後面的 ${c.za} 個 0` : `乘數後面的 ${c.zb} 個 0`;
+  }
+
+  /** 由 step.calc 產生 { question, hints[3], reveal }；題目不顯示乘積／和 */
+  function stepTexts(step) {
+    const c = step.calc;
+    const place = step.place;
+    const ans = step.answer;
+    const carryConcept = "十位的數字要進位，寫在上方小格，下一步再加上去。";
+
+    if (c.op === "mul" || c.op === "add") {
+      const isMul = c.op === "mul";
+      const value = isMul ? c.d * c.m + c.carryIn : c.d1 + c.d2 + c.carryIn;
+      const expr = isMul ? mulExpr(c) : addExpr(c);
+      const work = (isMul ? mulWork(c) : addWork(c)) + "。";
+
+      if (c.part === "carry") {
+        return {
+          question: `${expr} = ?，要進位幾？`,
+          hints: [
+            `${isMul ? "乘" : "加"}出來是兩位數，${carryConcept}`,
+            work,
+            `${value} 的十位是 ${ans}，進位 ${ans} 寫在上方小格。`,
+          ],
+          reveal: `${value} 的十位 ${ans} 要進位：進位 ${ans} 寫在上方小格。`,
+        };
+      }
+      if (c.part === "high") {
+        return {
+          question: `${expr} = ?，${place}寫幾？`,
+          hints: [
+            c.shortcut
+              ? `乘出來是兩位數，十位的數字直接寫在左邊的${place}。`
+              : `被乘數最左邊這一位乘完了，乘出來的十位數字不用進位，直接寫在左邊的${place}。`,
+            work,
+            `${value} 的十位是 ${ans}，${place}寫 ${ans}。`,
+          ],
+          reveal: `${value} 的十位 ${ans} 寫在${place}。`,
+        };
+      }
+
+      // part === "ones"
+      let concept;
+      let partial = work;
+      if (!isMul) {
+        concept =
+          `看紅圈：把${place}這一行的數加起來` +
+          (c.carryIn ? "，再加上上方小格的進位" : "") +
+          "。藍框寫加出來的個位數字。";
+      } else if (c.shortcut) {
+        concept =
+          shortcutWhat(c) +
+          `。先不管後面的零，把紅圈的兩個數相乘；乘出來的是「幾個${c.unit}」，所以從${place}開始寫。`;
+        partial = `${work}${c.a} × ${c.b} 是 ${value} 個${c.unit}。`;
+      } else {
+        concept =
+          (c.tensRowStart
+            ? "這一排乘的是乘數的十位（其實是乘幾十），乘出來的是「幾個十」，所以從十位開始寫。"
+            : "") +
+          (c.d === 0
+            ? `被乘數的${c.aPlace}是零，零乘任何數都是零`
+            : `看紅圈：被乘數的${c.aPlace} × 乘數的${c.bPlace}`) +
+          (c.carryIn ? "，再加上上方小格的進位" : "") +
+          "。藍框寫乘出來的個位數字。";
+        if (c.tensRowStart) partial = `${mulWork(c)}，是 ${value} 個十。`;
+      }
+      let question = `${expr} = ?，${place}寫幾？`;
+      if (!isMul && c.terms.length + (c.carryIn ? 1 : 0) === 1) {
+        question = `${place}只有 ${expr}，${place}寫幾？`;
+      }
+      return {
+        question,
+        hints: [
+          concept,
+          partial,
+          value >= 10 ? `${value} 的個位是 ${ans}，${place}寫 ${ans}。` : `${place}寫 ${ans}。`,
+        ],
+        reveal: `${expr} = ${value}，${place}寫 ${ans}。`,
+      };
+    }
+
+    // c.op === "zero"：補 0
+    if (c.shortcut) {
+      const v = c.d * c.m;
+      return {
+        question: `${place}要寫幾？`,
+        hints: [
+          `乘出來的是「幾個${c.unit}」。${place}上有幾個${unitOf(place)}？`,
+          `${c.d} × ${c.m} = ${v}，${c.a} × ${c.b} 是 ${v} 個${c.unit}。`,
+          `補上${shortcutZeros(c)}：${place}寫 0。`,
+        ],
+        reveal: `${place}補 0：${v} 個${c.unit}就是 ${c.a * c.b}。`,
+      };
+    }
+    const row = c.a * c.m;
+    return {
+      question: "第二排的個位要寫幾？",
+      hints: [
+        "這一排乘的是乘數的十位（其實是乘幾十），乘出來的是「幾個十」。個位上有幾個一？",
+        `乘數的十位 ${c.m} 是 ${c.m * 10}；${c.a} × ${c.m} = ${row}，所以 ${c.a} × ${c.m * 10} 是 ${row} 個十。`,
+        "這一排是「幾個十」，個位放 0（也可以省略不寫）。個位寫 0。",
+      ],
+      reveal: `個位放 0：${row} 個十就是 ${row * 10}。`,
+    };
+  }
+
+  function makeStep(o) {
+    const step = Object.assign({ highlights: [], autoFills: [] }, o);
+    step.fill = [{ row: o.target.row, col: o.target.col, value: o.answer }];
+    Object.assign(step, stepTexts(step));
+    return step;
+  }
+
   /**
-   * 康軒位值直式步驟：
-   * - 第一排 × 個位；中間進位寫上方；最後高位寫進該排
-   * - 第二排 × 十位（其實 ×n0）；整排乘完後學生點選補 0（一步）
-   * - 相加從右往左；加法進位自動
+   * 康軒位值直式步驟（每步點一格；進位也由學生點選，寫在上方小格）：
+   * - one-row（乘數一位）：乘出來直接寫在答案列
+   * - shortcut（整千×一位、一位×整十、整十×整十）：先算非 0 數字相乘（幾個千／十／百），再補 0
+   * - two-row：第一排 × 個位；第二排 × 十位（整排乘完後點選個位補 0）；再從右往左相加
    *
-   * boardPlan.slots 只標「之後一定會被填」的格（虛線格）：
-   * 步驟會填的格、加法自動進位格，以及一排題（無第二排）完成時由第一排抄下的答案格。
+   * boardPlan.slots 只標「之後一定會被填」的格（虛線格），且都在 visibleRows 內。
    */
   function buildSteps(a, b) {
     const steps = [];
     const boardPlan = emptyBoard(a, b);
-    const numCols = boardPlan.numCols;
+    const { numCols, mode } = boardPlan;
     const onesCol = numCols - 1;
     const places = placeLabels(numCols);
+    const hasSecond = mode === "two-row";
+    const product = a * b;
+    const bOnes = b % 10;
+    const bTens = Math.floor(b / 10) % 10;
+
+    function push(o) {
+      markSlot(boardPlan, o.target.row, o.target.col);
+      steps.push(makeStep(Object.assign({ place: places[o.target.col] }, o)));
+    }
+
+    if (mode === "shortcut") {
+      const za = trailingZeros(a);
+      const zb = trailingZeros(b);
+      const zeros = za + zb;
+      const d = a / Math.pow(10, za);
+      const m = b / Math.pow(10, zb);
+      const dCol = onesCol - za;
+      const mCol = onesCol - zb;
+      const v = d * m;
+      const startCol = onesCol - zeros;
+      const unit = unitOf(places[startCol]); // 幾個十／百／千
+      const highlights = [
+        { row: "multiplicand", col: dCol },
+        { row: "multiplier", col: mCol },
+      ];
+      const calc = { op: "mul", d, m, carryIn: 0, a, b, shortcut: true, unit, zeros, za, zb };
+      push({
+        phase: `先乘·${places[startCol]}：先不管 0`,
+        prompt: "先不管 0，看紅圈相乘",
+        kind: "shortcut",
+        answer: v % 10,
+        target: { row: "answer", col: startCol },
+        highlights,
+        calc: Object.assign({ part: "ones" }, calc),
+      });
+      if (v >= 10) {
+        push({
+          phase: `先乘·${places[startCol - 1]}：最高位`,
+          prompt: "先不管 0，看紅圈相乘",
+          kind: "shortcut",
+          answer: Math.floor(v / 10),
+          target: { row: "answer", col: startCol - 1 },
+          highlights,
+          calc: Object.assign({ part: "high" }, calc),
+        });
+      }
+      const zeroRings = [];
+      for (let k = 0; k < za; k++) zeroRings.push({ row: "multiplicand", col: onesCol - k });
+      for (let k = 0; k < zb; k++) zeroRings.push({ row: "multiplier", col: onesCol - k });
+      for (let col = startCol + 1; col <= onesCol; col++) {
+        push({
+          phase: `補0·${places[col]}`,
+          prompt: `乘出來是「幾個${unit}」，看紅圈的 0`,
+          kind: "pad-zero",
+          answer: 0,
+          target: { row: "answer", col },
+          highlights: zeroRings,
+          calc: { op: "zero", d, m, a, b, shortcut: true, unit, zeros, za, zb, rowDigits: v },
+        });
+      }
+      return { steps, boardPlan, row1Val: product, row2Val: 0, hasSecond, numCols, mode };
+    }
 
     const aDigits = [];
     let n = a;
@@ -473,255 +848,171 @@
       col -= 1;
     } while (n > 0 && col >= 0);
 
-    const bOnes = b % 10;
-    const bTens = Math.floor(b / 10) % 10;
-    const hasSecond = b >= 10;
-    const tensPlaceValue = bTens * 10;
-
-    function addPartialSteps(multDigit, multCol, carryRow, productRow, phasePrefix, isSecondRow) {
-      let runningCarry = 0;
-      const written = [];
+    function partialRow(m, mCol, carryRow, productRow, prefix, second) {
+      const shift = second ? 1 : 0;
+      const kind = second ? "tens-row" : "ones-row";
+      const tensPlaceValue = second ? m * 10 : null;
+      const prompt = second ? `第二排乘十位（×${m * 10}），再填藍框` : "看紅圈相乘，再填藍框";
+      let carry = 0;
+      let carryCol = null;
+      let value = 0;
 
       aDigits.forEach((md, idx) => {
-        const isLast = idx === aDigits.length - 1;
-        const prod = multDigit * md.val + runningCarry;
-        const writeDigit = prod % 10;
-        const nextCarry = Math.floor(prod / 10);
-        const shift = isSecondRow ? 1 : 0;
         const writeCol = md.col - shift;
         if (writeCol < 0) return;
-
-        markSlot(boardPlan, productRow, writeCol);
-
+        const isLast = idx === aDigits.length - 1;
+        const prod = m * md.val + carry;
         const highlights = [
           { row: "multiplicand", col: md.col },
-          { row: "multiplier", col: multCol },
+          { row: "multiplier", col: mCol },
         ];
-
+        if (carry) highlights.push({ row: carryRow, col: carryCol, carry: true });
+        const calc = {
+          op: "mul",
+          d: md.val,
+          m,
+          carryIn: carry,
+          a,
+          b,
+          aPlace: places[md.col],
+          bPlace: places[mCol],
+          tensRowStart: second && idx === 0,
+          neighbours: [aDigits[idx - 1], aDigits[idx + 1]].filter(Boolean).map((x) => x.val * m),
+        };
         const place = places[writeCol];
-        let question;
-        if (idx === 0 && runningCarry === 0 && !isSecondRow) {
-          question = `${multDigit} × ${md.val} = ${prod}，個位先寫幾？`;
-        } else if (md.val === 0 && runningCarry > 0) {
-          question = `${multDigit} × 0 + ${runningCarry} = ${prod}，${place}寫幾？`;
-        } else if (md.val === 0) {
-          question = `${multDigit} × 0 = ${prod}，${place}寫幾？`;
-        } else if (runningCarry > 0) {
-          question = `${multDigit} × ${md.val} + ${runningCarry} = ${prod}，${place}寫幾？`;
-        } else {
-          question = `${multDigit} × ${md.val} = ${prod}，${place}寫幾？`;
-        }
-
         let phase;
-        if (idx === 0) {
-          phase = isSecondRow
-            ? `${phasePrefix}·十位：乘十位`
-            : `${phasePrefix}·個位：先乘個位`;
-        } else if (md.val === 0) {
-          phase = `${phasePrefix}·${place}：中間有0`;
-        } else {
-          phase = `${phasePrefix}·${place}：繼續乘`;
-        }
+        if (idx === 0) phase = second ? `${prefix}·十位：乘十位` : `${prefix}·個位：先乘個位`;
+        else if (md.val === 0) phase = `${prefix}·${place}：中間有0`;
+        else phase = `${prefix}·${place}：繼續乘`;
 
-        let hint;
-        if (isSecondRow && idx === 0) {
-          hint =
-            `乘數的十位是 ${multDigit}，其實是在算 ×${tensPlaceValue}` +
-            `（不是只 ×${multDigit}）。` +
-            `${multDigit} × ${md.val} = ${prod}，這一格寫 ${writeDigit}；個位稍後補 0。`;
-        } else if (md.val === 0) {
-          hint =
-            `被乘數這一位是 0，${multDigit} × 0 = 0` +
-            (runningCarry > 0 ? `，再加上進位 ${runningCarry} 得到 ${prod}` : "") +
-            `。對齊${place}後寫 ${writeDigit}。`;
-        } else if (runningCarry > 0) {
-          hint =
-            `先算 ${multDigit} × ${md.val} = ${multDigit * md.val}，再加進位 ${runningCarry} 得到 ${prod}。` +
-            `這一格寫 ${writeDigit}。${CARRY_TIP}`;
-        } else {
-          hint = `${multDigit} × ${md.val} = ${prod}。把個位數字 ${writeDigit} 寫進藍框（${place}）。`;
-        }
-
-        const step = {
+        push({
           phase,
-          prompt: isSecondRow
-            ? `第二排乘十位（×${tensPlaceValue}），再填藍框`
-            : "看紅圈相乘，再填藍框",
-          question,
-          hint,
-          answer: writeDigit,
+          prompt,
+          kind,
+          answer: prod % 10,
           target: { row: productRow, col: writeCol },
           highlights,
-          fill: [{ row: productRow, col: writeCol, value: writeDigit }],
-          autoFills: [],
-          kind: isSecondRow ? "tens-row" : "ones-row",
-          tensPlaceValue: isSecondRow ? tensPlaceValue : null,
-          multDigit,
-        };
-        steps.push(step);
-        written.push({ col: writeCol, value: writeDigit });
+          calc: Object.assign({ part: "ones" }, calc),
+          tensPlaceValue,
+          multDigit: m,
+        });
+        value += (prod % 10) * Math.pow(10, onesCol - writeCol);
 
-        if (!isLast && nextCarry > 0) {
-          const cCol = writeCol - 1;
-          if (cCol >= 0) {
-            markSlot(boardPlan, carryRow, cCol);
-            const badge = carryRow === "carry1" ? "①" : "②";
-            steps.push({
-              phase: `${phasePrefix}·進位：記上方`,
-              prompt: "看紅圈相乘，再填藍框",
-              question: `${prod} 的十位是幾？請寫進${badge}進位。`,
-              hint:
-                `${prod} = ${nextCarry}0 + ${writeDigit}，所以進位寫 ${nextCarry}。` +
-                `下一步相乘時會加上它。${CARRY_TIP}`,
-              answer: nextCarry,
-              target: { row: carryRow, col: cCol },
-              highlights,
-              fill: [{ row: carryRow, col: cCol, value: nextCarry }],
-              autoFills: [],
-              kind: "carry",
-            });
-          }
-          runningCarry = nextCarry;
-        } else if (isLast && nextCarry > 0) {
-          let high = nextCarry;
-          let hCol = writeCol - 1;
-          while (high > 0 && hCol >= 0) {
-            const d = high % 10;
-            markSlot(boardPlan, productRow, hCol);
-            steps.push({
-              phase: `${phasePrefix}·${places[hCol]}：最高位`,
-              prompt: "看紅圈相乘，再填藍框",
-              question: `${prod} 還剩左邊的 ${high}，${places[hCol]}寫幾？`,
-              hint: `乘完後左邊還有 ${high}，把 ${d} 寫在 ${places[hCol]}（位值對齊）。`,
-              answer: d,
-              target: { row: productRow, col: hCol },
-              highlights,
-              fill: [{ row: productRow, col: hCol, value: d }],
-              autoFills: [],
-              kind: isSecondRow ? "tens-row" : "ones-row",
-              tensPlaceValue: isSecondRow ? tensPlaceValue : null,
-            });
-            written.push({ col: hCol, value: d });
-            high = Math.floor(high / 10);
-            hCol -= 1;
-          }
-          runningCarry = 0;
+        const next = Math.floor(prod / 10);
+        if (next > 0 && !isLast) {
+          carryCol = writeCol - 1;
+          push({
+            phase: `${prefix}·進位：記上方`,
+            prompt: "乘出來是兩位數，進位寫在上方小格",
+            kind: "carry",
+            answer: next,
+            target: { row: carryRow, col: carryCol },
+            highlights,
+            calc: Object.assign({ part: "carry" }, calc),
+          });
+          carry = next;
+        } else if (next > 0) {
+          // 最後一位：十位直接寫進該排（next ≤ 8，一定是一位數）
+          const hCol = writeCol - 1;
+          push({
+            phase: `${prefix}·${places[hCol]}：最高位`,
+            prompt,
+            kind,
+            answer: next,
+            target: { row: productRow, col: hCol },
+            highlights,
+            calc: Object.assign({ part: "high" }, calc),
+            tensPlaceValue,
+            multDigit: m,
+          });
+          value += next * Math.pow(10, onesCol - hCol);
         } else {
-          runningCarry = nextCarry;
+          carry = 0;
+          carryCol = null;
         }
       });
 
       // 第二排：整排乘完後個位補 0（點選一步；因 ×十位＝×n0）
-      if (isSecondRow) {
-        markSlot(boardPlan, productRow, onesCol);
-        written.push({ col: onesCol, value: 0 });
-        steps.push({
-          phase: `${phasePrefix}·個位：補0`,
-          prompt: "第二排乘完了，個位補幾？",
-          question: "第二排個位要寫幾？",
-          hint:
-            `第二排乘完才補 0：這排其實是 ×${tensPlaceValue}` +
-            `（不是只 ×${bTens}），所以個位對齊寫 0。`,
+      if (second) {
+        push({
+          phase: `${prefix}·個位：補0`,
+          prompt: "第二排乘完了，個位要寫幾？",
+          kind: "pad-zero",
           answer: 0,
           target: { row: productRow, col: onesCol },
-          highlights: [{ row: "multiplier", col: multCol }],
-          fill: [{ row: productRow, col: onesCol, value: 0 }],
-          autoFills: [],
-          kind: "pad-zero",
+          highlights: [{ row: "multiplier", col: mCol }],
+          calc: { op: "zero", m, a, b, unit: "十", rowDigits: a * m },
           tensPlaceValue,
-          multDigit,
+          multDigit: m,
         });
       }
-
-      let value = 0;
-      written.forEach((p) => {
-        value += p.value * Math.pow(10, onesCol - p.col);
-      });
       return value;
     }
 
-    const multOnesCol = onesCol;
-    const multTensCol = onesCol - 1;
-    const row1Val = addPartialSteps(bOnes, multOnesCol, "carry1", "row1", "第一排", false);
+    let row1Val;
     let row2Val = 0;
-    if (hasSecond) {
-      row2Val = addPartialSteps(bTens, multTensCol, "carry2", "row2", "第二排", true);
-    }
-
-    // ----- 相加（從右往左、逐位） -----
-    if (hasSecond) {
-      let addCarry = 0;
-      const product = a * b;
-      const prodDigits = String(product).length;
-      const maxCol = numCols - prodDigits;
-
-      for (let c = onesCol; c >= 0; c--) {
-        const d1 = Math.floor(row1Val / Math.pow(10, onesCol - c)) % 10;
-        const d2 = Math.floor(row2Val / Math.pow(10, onesCol - c)) % 10;
-        if (c < maxCol && d1 === 0 && d2 === 0 && addCarry === 0) continue;
-
-        const sum = d1 + d2 + addCarry;
-        const writeDigit = sum % 10;
-        const nextCarry = Math.floor(sum / 10);
-
-        markSlot(boardPlan, "answer", c);
-
-        let question;
-        if (d1 === 0 && d2 === 0 && addCarry > 0) {
-          question = `0 + 進位 ${addCarry} = ?`;
-        } else if (addCarry > 0) {
-          question = `${d1} + ${d2} + 進位 ${addCarry} = ${sum}，${places[c]}寫幾？`;
-        } else if (c === onesCol && sum < 10) {
-          question = `${d1} + ${d2} = ?`;
-        } else {
-          question = `${d1} + ${d2} = ${sum}，${places[c]}寫幾？`;
-        }
-
-        const fill = [{ row: "answer", col: c, value: writeDigit }];
-        const autoFills = [];
-        if (nextCarry > 0) {
-          const cCol = c - 1;
-          if (cCol >= 0) {
-            markSlot(boardPlan, "addCarry", cCol);
-            autoFills.push({
-              row: "addCarry",
-              col: cCol,
-              value: nextCarry,
-              auto: true,
-            });
-          }
-        }
-
-        const shortPlace = places[c];
-        steps.push({
-          phase: `相加·${shortPlace}：從右往左`,
-          prompt: "從右往左，逐位相加",
-          question,
-          hint:
-            addCarry > 0
-              ? `${d1} + ${d2} + 進位 ${addCarry} = ${sum}。${shortPlace}寫 ${writeDigit}` +
-                (nextCarry ? `，並進位 ${nextCarry}。` : "。") +
-                (nextCarry ? CARRY_TIP : "")
-              : `${d1} + ${d2} = ${sum}。${shortPlace}寫 ${writeDigit}` +
-                (nextCarry ? `，進位 ${nextCarry} 給下一格。${CARRY_TIP}` : "。"),
-          answer: writeDigit,
-          target: { row: "answer", col: c },
-          highlights: [],
-          fill,
-          autoFills,
-          kind: "add",
-        });
-
-        addCarry = nextCarry;
-      }
+    if (!hasSecond) {
+      row1Val = partialRow(bOnes, onesCol, "carry1", "answer", "相乘", false);
     } else {
-      // 只有一排：第一排就是答案，完成時抄到答案列（fillAnswerFromRow1）
-      for (let c = 0; c < numCols; c++) {
-        if (boardPlan.slots.row1[c]) markSlot(boardPlan, "answer", c);
+      row1Val = partialRow(bOnes, onesCol, "carry1", "row1", "第一排", false);
+      row2Val = partialRow(bTens, onesCol - 1, "carry2", "row2", "第二排", true);
+
+      // ----- 相加（從右往左、逐位；加法進位也由學生點選） -----
+      const maxCol = numCols - String(product).length;
+      const digitAtCol = (val, c) => Math.floor(val / Math.pow(10, onesCol - c)) % 10;
+      let carry = 0;
+      for (let c = onesCol; c >= maxCol; c--) {
+        const has1 = boardPlan.slots.row1[c];
+        const has2 = boardPlan.slots.row2[c];
+        const d1 = has1 ? digitAtCol(row1Val, c) : 0;
+        const d2 = has2 ? digitAtCol(row2Val, c) : 0;
+        const terms = [];
+        if (has1) terms.push(d1);
+        if (has2) terms.push(d2);
+        const sum = d1 + d2 + carry;
+        const highlights = [];
+        if (has1) highlights.push({ row: "row1", col: c });
+        if (has2) highlights.push({ row: "row2", col: c });
+        if (carry) highlights.push({ row: "addCarry", col: c, carry: true });
+        const calc = {
+          op: "add",
+          d1,
+          d2,
+          terms,
+          carryIn: carry,
+          neighbours: [c - 1, c + 1]
+            .filter((x) => x >= 0 && x <= onesCol)
+            .map((x) => digitAtCol(row1Val, x) + digitAtCol(row2Val, x)),
+        };
+        push({
+          phase: `相加·${places[c]}：從右往左`,
+          prompt: "看紅圈相加，再填藍框",
+          kind: "add",
+          answer: sum % 10,
+          target: { row: "answer", col: c },
+          highlights,
+          calc: Object.assign({ part: "ones" }, calc),
+        });
+        carry = Math.floor(sum / 10);
+        if (carry > 0) {
+          push({
+            phase: "相加·進位：記上方",
+            prompt: "加起來是兩位數，進位寫在上方小格",
+            kind: "add-carry",
+            answer: carry,
+            target: { row: "addCarry", col: c - 1 },
+            highlights,
+            calc: Object.assign({ part: "carry" }, calc),
+          });
+        }
       }
     }
 
-    return { steps, boardPlan, row1Val, row2Val, hasSecond, numCols };
+    // 進位小提醒：每張卡只出現一次（第一個進位步驟）
+    const firstCarry = steps.find((s) => s.kind === "carry" || s.kind === "add-carry");
+    if (firstCarry) firstCarry.tip = CARRY_TIP;
+
+    return { steps, boardPlan, row1Val, row2Val, hasSecond, numCols, mode };
   }
 
   /** 由 plan 複製出一張全空的板（保留 slots 虛線標記） */
@@ -741,28 +1032,15 @@
     });
   }
 
-  /** 只有一排（乘數一位）時，第一排就是答案：抄到答案列 */
-  function fillAnswerFromRow1(board) {
-    for (let c = 0; c < board.numCols; c++) {
-      if (board.row1[c] !== null) {
-        board.answer[c] = board.row1[c];
-        board.slots.answer[c] = true;
-      }
-    }
-  }
-
   function buildCompletedBoard(a, b) {
-    const { steps, boardPlan, row1Val, row2Val, hasSecond, numCols } = buildSteps(a, b);
+    const { steps, boardPlan, row1Val, row2Val, hasSecond, numCols, mode } = buildSteps(a, b);
     const board = cloneBoard(boardPlan);
     const autoCells = {};
     steps.forEach((s) => {
       applyFill(board, s.fill, autoCells);
       applyFill(board, s.autoFills, autoCells);
     });
-    board.hasSecondRow = hasSecond;
-    board.numCols = numCols;
-    if (!hasSecond) fillAnswerFromRow1(board);
-    return { board, steps, row1Val, row2Val, hasSecond, autoCells, numCols };
+    return { board, steps, row1Val, row2Val, hasSecond, autoCells, numCols, mode };
   }
 
   return {
@@ -791,7 +1069,13 @@
     buildSteps,
     cloneBoard,
     applyFill,
-    fillAnswerFromRow1,
     buildCompletedBoard,
+    RENDER_ROWS,
+    HINT_LEVELS,
+    buildChoices,
+    errorCandidates,
+    genericWrong,
+    isShortcut,
+    boardMode,
   };
 });

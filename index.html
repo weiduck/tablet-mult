@@ -60,7 +60,8 @@
             <div id="stepActive">
               <div class="question-box">
                 <p class="phase" id="phaseLabel">第一排·個位：先乘個位</p>
-                <p class="question" id="questionText">7 × 8 = 56，個位先寫幾？</p>
+                <p class="question" id="questionText">8 × 7 = ?，個位寫幾？</p>
+                <p class="tip hidden" id="tipText"></p>
                 <div class="choices" id="choices" role="group" aria-label="答案選項"></div>
                 <div class="feedback" id="feedback" role="status"></div>
                 <div class="hint-box" id="hintBox"></div>
@@ -73,8 +74,8 @@
               <h3 class="complete-title">每個數字都放對位置</h3>
               <div class="complete-sum" id="completeSum">336 + 960 = 1296</div>
               <div class="complete-eq" id="completeEq">48 × 27 = 1296</div>
-              <p class="complete-note">
-                位值對齊：個位排 → 十位排（補 0）→ 從右往左相加。
+              <p class="complete-note" id="completeNote">
+                位值對齊：個位排 → 十位排（幾個十，個位放 0）→ 從右往左相加。
               </p>
               <button type="button" class="primary-btn" id="nextCardBtn">再練一次</button>
             </div>

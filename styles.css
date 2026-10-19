@@ -434,6 +434,12 @@ button {
   pointer-events: none;
 }
 
+/* 要加上的進位：虛線圈，和相乘的兩個紅圈區分 */
+.cell .ring--carry {
+  border-style: dashed;
+  border-width: 2.5px;
+}
+
 .hline {
   grid-column: 2 / -1;
   height: 3.5px;
@@ -546,6 +552,19 @@ button {
   cursor: default;
 }
 
+/* 錯 3 次後輕輕框出正確選項 */
+.choice.suggest {
+  outline: 4px dashed #5aaa55;
+  outline-offset: 3px;
+}
+
+.tip {
+  margin: -6px 0 12px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--primary);
+}
+
 .feedback {
   display: none;
   border: 2.5px solid var(--navy);
@@ -584,6 +603,24 @@ button {
 
 .hint-box.show {
   display: block;
+}
+
+.hint-line {
+  margin: 0;
+}
+
+.hint-line + .hint-line {
+  margin-top: 6px;
+}
+
+.hint-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #f3dc8a;
+  font-size: 0.8rem;
+  font-weight: 900;
 }
 
 .hint-btn,

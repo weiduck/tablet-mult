@@ -8,7 +8,7 @@
   "use strict";
 
   const Core = window.MultCore;
-  const { MIN_COLS, placeShort, makeChoices, cloneBoard, applyFill, fillAnswerFromRow1 } = Core;
+  const { MIN_COLS, HINT_LEVELS, placeShort, buildChoices, genericWrong, cloneBoard, applyFill } = Core;
   const DECK = Core.DECK;
 
   const state = {
@@ -18,7 +18,9 @@
     stepIndex: 0,
     board: null,
     problem: null,
-    hintOpen: false,
+    hintLevel: 0, // 0 = 收起；1–3 = 已打開到第幾層
+    wrongCount: 0, // 同一步點錯幾次
+    why: {}, // 錯的選項 → 錯因回饋
     locked: false,
     completed: false,
     autoCells: {},
@@ -43,17 +45,18 @@
     const isCurrent =
       ui.current && ui.current.row === row && ui.current.col === col;
     const highlighted =
-      ui.highlights &&
-      ui.highlights.some((h) => h.row === row && h.col === col);
+      ui.highlights && ui.highlights.find((h) => h.row === row && h.col === col);
     const isAuto = ui.autoCells && ui.autoCells[key];
+    // 紅圈＝正在相乘／相加的數；虛線圈＝要加上的進位
+    const ring = highlighted
+      ? `<span class="ring${highlighted.carry ? " ring--carry" : ""}" aria-hidden="true"></span>`
+      : "";
 
     if (row === "multiplicand" || row === "multiplier") {
       if (val === null || val === undefined) {
         return `<div class="cell blank" data-key="${key}"></div>`;
       }
-      return `<div class="cell fixed" data-key="${key}">${val}${
-        highlighted ? '<span class="ring" aria-hidden="true"></span>' : ""
-      }</div>`;
+      return `<div class="cell fixed" data-key="${key}">${val}${ring}</div>`;
     }
 
     if (!isSlot && (val === null || val === undefined)) {
@@ -65,7 +68,7 @@
       if (isCurrent) cls = "cell current";
       else if (isAuto) cls = "cell filled auto";
       else cls = "cell filled";
-      return `<div class="${cls}" data-key="${key}">${val}</div>`;
+      return `<div class="${cls}" data-key="${key}">${val}${ring}</div>`;
     }
 
     const cls = isCurrent ? "cell current" : "cell empty";
@@ -81,34 +84,27 @@
       "minmax(68px, 84px) repeat(" + numCols + ", minmax(42px, 1fr))";
     container.style.maxWidth = numCols <= 4 ? "440px" : numCols === 5 ? "520px" : "600px";
 
-    const rows = [
-      ["①進位", "carry1"],
-      ["②進位", "carry2"],
-      ["被乘數", "multiplicand"],
-      ["× 乘數", "multiplier"],
-      ["__line1__", null],
-      ["第一排", "row1"],
-      ["第二排", "row2"],
-      ["加法進位", "addCarry"],
-      ["__line2__", null],
-      ["答案", "answer"],
-    ];
+    const twoRow = board.hasSecondRow;
+    const labels = {
+      carry1: twoRow ? "①進位" : "進位",
+      carry2: "②進位",
+      multiplicand: "被乘數",
+      multiplier: "× 乘數",
+      row1: "第一排",
+      row2: "第二排",
+      addCarry: "加法進位",
+      answer: "答案",
+    };
+    const hline = `<div class="row-label"></div><div class="hline"></div>`;
 
+    // 只畫這一題用得到的列（乘數一位、整十捷徑：沒有第二排與加法進位）
     let html = "";
-    rows.forEach(([label, row]) => {
-      if (label === "__line1__" || label === "__line2__") {
-        html += `<div class="row-label"></div><div class="hline"></div>`;
-        return;
-      }
-      if (!board.hasSecondRow && (row === "row2" || row === "carry2" || row === "addCarry")) {
-        html += `<div class="row-label">${label}</div>`;
-        for (let c = 0; c < numCols; c++) html += `<div class="cell blank"></div>`;
-        return;
-      }
-      html += `<div class="row-label">${label}</div>`;
+    board.visibleRows.forEach((row) => {
+      html += `<div class="row-label">${labels[row]}</div>`;
       for (let c = 0; c < numCols; c++) {
         html += cellHtml(row, c, board, ui);
       }
+      if (row === "multiplier" || (twoRow && row === "addCarry")) html += hline;
     });
 
     html += `<div class="row-label">定位</div>`;
@@ -178,24 +174,12 @@
     });
   }
 
-  function wrongFeedback(step) {
-    if (step.kind === "tens-row" && step.tensPlaceValue) {
-      return `還差一點。這排是乘十位（其實 ×${step.tensPlaceValue}，不是只 ×${step.multDigit}），看看藍框的位值再選。`;
-    }
-    if (step.kind === "carry") {
-      return `還差一點。進位是十位那個數字；可記心裡／手指／紙上，別擋到相加。`;
-    }
-    if (step.kind === "add") {
-      return `還差一點。從右往左逐位相加，看看藍框的位值再選。`;
-    }
-    return "還差一點。看看藍框所在的位值，再選一次。";
-  }
-
   function startCard(index) {
     clearTimers();
     state.cardToken += 1;
     state.cardIndex = index;
-    state.hintOpen = false;
+    state.hintLevel = 0;
+    state.wrongCount = 0;
     state.locked = false;
     state.completed = false;
     state.autoCells = {};
@@ -216,10 +200,10 @@
       row2Val: built.row2Val,
       hasSecond: built.hasSecond,
       numCols: built.numCols,
+      mode: built.mode,
+      steps: built.steps,
     };
     state.board = cloneBoard(built.boardPlan);
-    state.board.hasSecondRow = built.hasSecond;
-    state.board.numCols = built.numCols;
 
     document.getElementById("stepActive").classList.remove("hidden");
     document.getElementById("stepComplete").classList.add("hidden");
@@ -243,23 +227,27 @@
     document.getElementById("questionText").textContent = step.question;
     document.getElementById("boardPrompt").textContent = step.prompt;
 
+    // 進位小提醒：每張卡只在第一個進位步驟出現
+    const tip = document.getElementById("tipText");
+    tip.textContent = step.tip || "";
+    tip.classList.toggle("hidden", !step.tip);
+
     const fb = document.getElementById("feedback");
     fb.className = "feedback";
     fb.textContent = "";
 
-    const hintBox = document.getElementById("hintBox");
-    hintBox.textContent = step.hint;
-    hintBox.classList.toggle("show", state.hintOpen);
-    const hintBtn = document.getElementById("hintBtn");
-    hintBtn.textContent = state.hintOpen ? "收起提示" : "給我一個提示";
-    hintBtn.classList.toggle("active", state.hintOpen);
+    state.wrongCount = 0;
+    renderHint();
 
     const choices = document.getElementById("choices");
     choices.innerHTML = "";
-    makeChoices(step.answer).forEach((n) => {
+    const built = buildChoices(step);
+    state.why = built.why;
+    built.values.forEach((n) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "choice";
+      btn.dataset.value = String(n);
       btn.textContent = String(n);
       btn.addEventListener("click", () => onChoose(n, btn));
       choices.appendChild(btn);
@@ -281,19 +269,31 @@
 
     if (n !== step.answer) {
       btn.classList.add("wrong");
+      btn.disabled = true; // 同一個錯的選項不用再點
+      state.wrongCount += 1;
       fb.className = "feedback show wrong";
-      fb.textContent = wrongFeedback(step);
+      fb.textContent = state.why[n] || genericWrong(step);
+      // 錯 2 次：自動打開第 2 層提示（已打開就再往下一層）；錯 3 次：第 3 層＋框出正確選項
+      if (state.wrongCount >= 2) {
+        state.hintLevel = Math.min(HINT_LEVELS, Math.max(state.hintLevel + 1, state.wrongCount));
+        renderHint();
+      }
+      if (state.wrongCount >= 3) {
+        const right = document.querySelector(`.choice[data-value="${step.answer}"]`);
+        if (right) right.classList.add("suggest");
+      }
       document.getElementById("footerNote").textContent = "點錯沒關係，可以再選一次。";
       return;
     }
 
     state.locked = true;
+    btn.classList.remove("suggest");
     btn.classList.add("correct");
     document.querySelectorAll(".choice").forEach((el) => {
       el.disabled = true;
     });
     fb.className = "feedback show correct";
-    fb.textContent = "答對了！數字已經填進正確的位置。";
+    fb.textContent = `答對了！${step.reveal}`;
 
     applyFill(state.board, step.fill, state.autoCells);
     applyFill(state.board, step.autoFills, state.autoCells);
@@ -308,21 +308,45 @@
     later(() => {
       if (token !== state.cardToken) return;
       state.stepIndex += 1;
-      state.hintOpen = false;
+      state.hintLevel = 0;
       if (state.stepIndex >= state.steps.length) {
         showComplete();
       } else {
         renderStep();
       }
-    }, 1200);
+    }, 1600);
+  }
+
+  /** 提示框顯示第 1 層到目前這一層；按鈕標示「提示 n/3」 */
+  function renderHint() {
+    const step = state.steps[state.stepIndex];
+    const hintBox = document.getElementById("hintBox");
+    const hintBtn = document.getElementById("hintBtn");
+    const level = state.hintLevel;
+    hintBox.innerHTML = "";
+    if (step && level > 0) {
+      step.hints.slice(0, level).forEach((text, i) => {
+        const p = document.createElement("p");
+        p.className = "hint-line";
+        const tag = document.createElement("span");
+        tag.className = "hint-tag";
+        tag.textContent = `提示 ${i + 1}/${HINT_LEVELS}`;
+        p.appendChild(tag);
+        p.appendChild(document.createTextNode(text));
+        hintBox.appendChild(p);
+      });
+    }
+    hintBox.classList.toggle("show", level > 0);
+    if (level === 0) hintBtn.textContent = "給我一個提示";
+    else if (level < HINT_LEVELS) hintBtn.textContent = `提示 ${level}/${HINT_LEVELS}・再給一個提示`;
+    else hintBtn.textContent = `提示 ${level}/${HINT_LEVELS}・收起提示`;
+    hintBtn.classList.toggle("active", level > 0);
   }
 
   function showComplete() {
     state.completed = true;
-    const { a, b, row1Val, row2Val, hasSecond } = state.problem;
+    const { a, b, row1Val, row2Val, mode, steps } = state.problem;
     const product = a * b;
-
-    if (!hasSecond) fillAnswerFromRow1(state.board);
 
     document.getElementById("boardPrompt").textContent = "完成的直式";
     renderBoard(document.getElementById("practiceBoard"), state.board, {
@@ -337,11 +361,19 @@
     document.getElementById("stepActive").classList.add("hidden");
     document.getElementById("stepComplete").classList.remove("hidden");
 
-    if (hasSecond) {
-      document.getElementById("completeSum").textContent = `${row1Val} + ${row2Val} = ${product}`;
-      document.getElementById("completeSum").classList.remove("hidden");
+    const sum = document.getElementById("completeSum");
+    const note = document.getElementById("completeNote");
+    if (mode === "two-row") {
+      sum.textContent = `${row1Val} + ${row2Val} = ${product}`;
+      note.textContent = "位值對齊：個位排 → 十位排（幾個十，個位放 0）→ 從右往左相加。";
+    } else if (mode === "shortcut") {
+      const c = steps[0].calc;
+      const v = c.d * c.m;
+      sum.textContent = `${c.d} × ${c.m} = ${v}，再補上 ${c.zeros} 個 0`;
+      note.textContent = `${v} 個${c.unit}就是 ${product}：先乘不是 0 的數字，再補 0。`;
     } else {
-      document.getElementById("completeSum").textContent = `第一排就是答案 ${product}`;
+      sum.textContent = `乘出來這一排就是答案 ${product}`;
+      note.textContent = "位值對齊：從個位開始乘，進位寫在上方小格。";
     }
     document.getElementById("completeEq").textContent = `${a} × ${b} = ${product}`;
 
@@ -414,15 +446,10 @@
     startCard(0);
 
     document.getElementById("hintBtn").addEventListener("click", () => {
-      state.hintOpen = !state.hintOpen;
-      const step = state.steps[state.stepIndex];
-      if (!step) return;
-      const hintBox = document.getElementById("hintBox");
-      hintBox.textContent = step.hint;
-      hintBox.classList.toggle("show", state.hintOpen);
-      const hintBtn = document.getElementById("hintBtn");
-      hintBtn.textContent = state.hintOpen ? "收起提示" : "給我一個提示";
-      hintBtn.classList.toggle("active", state.hintOpen);
+      if (!state.steps[state.stepIndex] || state.completed) return;
+      // 0 → 1 → 2 → 3 → 收起 → 1 …
+      state.hintLevel = (state.hintLevel + 1) % (HINT_LEVELS + 1);
+      renderHint();
     });
     document.getElementById("nextCardBtn").addEventListener("click", () => {
       // 留在同一題型；startCard 會呼叫 generate() 重抽 a×b

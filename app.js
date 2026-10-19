@@ -246,7 +246,18 @@
     locked: false,
     completed: false,
     autoCells: {},
+    timers: [],
+    cardToken: 0,
   };
+
+  function later(fn, ms) {
+    state.timers.push(window.setTimeout(fn, ms));
+  }
+
+  function clearTimers() {
+    state.timers.forEach((t) => window.clearTimeout(t));
+    state.timers = [];
+  }
 
   // ---------- helpers ----------
   function digitsOf(n, numCols) {
@@ -834,6 +845,8 @@
   }
 
   function startCard(index) {
+    clearTimers();
+    state.cardToken += 1;
     state.cardIndex = index;
     state.hintOpen = false;
     state.locked = false;
@@ -945,7 +958,9 @@
       autoCells: state.autoCells,
     });
 
-    window.setTimeout(() => {
+    const token = state.cardToken;
+    later(() => {
+      if (token !== state.cardToken) return;
       state.stepIndex += 1;
       state.hintOpen = false;
       if (state.stepIndex >= state.steps.length) {

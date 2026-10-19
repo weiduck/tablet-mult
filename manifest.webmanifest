@@ -4,7 +4,7 @@
   "description": "平板直式乘法點選練習",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "landscape",
+  "orientation": "any",
   "theme_color": "#e8f3fb",
   "background_color": "#e8f3fb",
   "icons": [

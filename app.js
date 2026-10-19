@@ -11,6 +11,23 @@
   const { MIN_COLS, HINT_LEVELS, placeShort, buildChoices, genericWrong, cloneBoard, applyFill } = Core;
   const DECK = Core.DECK;
 
+  // 答對後停多久才換下一步（毫秒）；系統設定「減少動態效果」時縮短
+  const ADVANCE_DELAY_MS = { normal: 1600, reducedMotion: 600 };
+
+  // 直式板格子邊長：至少 MIN_CELL（觸控目標），放不下就在直式板區內捲動
+  const MIN_CELL = 44;
+  const MAX_CELL = 64;
+
+  function prefersReducedMotion() {
+    return !!(
+      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  function advanceDelay() {
+    return prefersReducedMotion() ? ADVANCE_DELAY_MS.reducedMotion : ADVANCE_DELAY_MS.normal;
+  }
+
   const state = {
     cardIndex: 0,
     deck: DECK,
@@ -71,8 +88,25 @@
       return `<div class="${cls}" data-key="${key}">${val}${ring}</div>`;
     }
 
-    const cls = isCurrent ? "cell current" : "cell empty";
-    return `<div class="${cls}" data-key="${key}">&nbsp;</div>`;
+    if (isCurrent) {
+      return `<div class="cell current" data-key="${key}" role="img" aria-label="${ui.currentLabel || "目前要填"}">&nbsp;</div>`;
+    }
+    return `<div class="cell empty" data-key="${key}">&nbsp;</div>`;
+  }
+
+  /** 目前要填那一格給螢幕閱讀器的名稱，例如「第一排 十位，目前要填」 */
+  function currentCellLabel(board, target) {
+    const twoRow = board.hasSecondRow;
+    const rowNames = {
+      carry1: twoRow ? "第一排進位" : "進位",
+      carry2: "第二排進位",
+      row1: "第一排",
+      row2: "第二排",
+      addCarry: "加法進位",
+      answer: "答案",
+    };
+    const place = placeShort(board.numCols || MIN_COLS)[target.col] || "";
+    return `${rowNames[target.row] || ""} ${place}，目前要填`;
   }
 
   function renderBoard(container, board, ui) {
@@ -80,9 +114,8 @@
     const numCols = board.numCols || MIN_COLS;
     const shorts = placeShort(numCols);
     container.className = "board board--cols-" + numCols;
-    container.style.gridTemplateColumns =
-      "minmax(68px, 84px) repeat(" + numCols + ", minmax(42px, 1fr))";
-    container.style.maxWidth = numCols <= 4 ? "440px" : numCols === 5 ? "520px" : "600px";
+    container.style.gridTemplateColumns = `var(--label-w) repeat(${numCols}, var(--cell))`;
+    if (ui.current) ui.currentLabel = currentCellLabel(board, ui.current);
 
     const twoRow = board.hasSecondRow;
     const labels = {
@@ -115,6 +148,64 @@
     container.innerHTML = html;
   }
 
+  /**
+   * 依直式板區的可用空間算格子大小（整題固定：這題要畫的列與欄數不會變）。
+   * 格子介於 MIN_CELL～MAX_CELL；放不下時不再縮小，改讓 .board-area 內部捲動。
+   */
+  function fitBoard() {
+    const area = document.getElementById("boardArea");
+    const board = state.board;
+    if (!area || !board) return;
+    const numCols = board.numCols || MIN_COLS;
+    const rows = board.visibleRows.length;
+    const lines = board.visibleRows.filter(
+      (r) => r === "multiplier" || (board.hasSecondRow && r === "addCarry")
+    ).length;
+    const rowGap = 6;
+    const colGap = 5;
+    const H = area.clientHeight - 16;
+    const W = area.clientWidth - 16;
+    // 列：格子列＋定位列（約 0.5 格）＋橫線；欄：列名約 1.45 格寬＋每欄一格
+    const byH = (H - (rows + lines + 1) * rowGap) / (rows + 0.5 + lines * 0.1);
+    const byW = (W - numCols * colGap) / (numCols + 1.45);
+    const cell = Math.floor(Math.max(MIN_CELL, Math.min(MAX_CELL, byH, byW)));
+    area.style.setProperty("--cell", cell + "px");
+    revealCurrent();
+  }
+
+  /**
+   * 只捲 area 本身，讓 el 進入可見範圍（scrollIntoView 可能連外層 overflow:hidden 的卡片一起捲）。
+   * el 比 area 高時對齊上緣。
+   */
+  function scrollIntoArea(area, el) {
+    if (!area || !el) return;
+    const a = area.getBoundingClientRect();
+    const c = el.getBoundingClientRect();
+    const pad = 8;
+    if (c.top < a.top || c.height > a.height - pad * 2) area.scrollTop -= a.top - c.top + pad;
+    else if (c.bottom > a.bottom) area.scrollTop += c.bottom - a.bottom + pad;
+    if (c.left < a.left) area.scrollLeft -= a.left - c.left + pad;
+    else if (c.right > a.right) area.scrollLeft += c.right - a.right + pad;
+  }
+
+  /** 直式板區有捲動時，把目前要填的格子捲進畫面 */
+  function revealCurrent() {
+    const area = document.getElementById("boardArea");
+    scrollIntoArea(area, area && area.querySelector(".cell.current"));
+  }
+
+  /** 步驟區放不下時（直向、打開多層提示），把提示框連同下方的提示按鈕捲進畫面 */
+  function revealHint() {
+    const panel = document.getElementById("stepPanel");
+    const box = document.getElementById("hintBox");
+    if (!box.classList.contains("show")) return;
+    // 版面（直式板縮小、格子重算）穩定後再捲
+    window.requestAnimationFrame(() => {
+      scrollIntoArea(panel, document.getElementById("hintBtn"));
+      scrollIntoArea(panel, box);
+    });
+  }
+
   // ---------- Practice ----------
   function currentProblem() {
     return state.deck[state.cardIndex % state.deck.length];
@@ -124,28 +215,19 @@
     const list = document.getElementById("deckJumpList");
     if (!list) return;
     list.innerHTML = "";
-    const mid = Math.ceil(state.deck.length / 2);
-    const row1 = document.createElement("div");
-    row1.className = "deck-jump-row";
-    const row2 = document.createElement("div");
-    row2.className = "deck-jump-row";
+    // 一般的按鈕群組：目前題型用 aria-pressed 標示；排版（每列幾個）交給 CSS grid
     state.deck.forEach((type, i) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "deck-jump-btn";
-      btn.setAttribute("role", "option");
       btn.dataset.index = String(i);
       const stage = type.stage
         ? `<span class="dj-stage">${type.stage}</span>`
         : "";
       btn.innerHTML =
         `<span class="dj-num">題型 ${i + 1}</span>` + stage;
-      btn.setAttribute(
-        "aria-label",
-        `題型 ${i + 1}` + (type.stage ? ` ${type.stage}` : "")
-      );
       btn.addEventListener("click", () => startCard(i));
-      (i < mid ? row1 : row2).appendChild(btn);
+      list.appendChild(btn);
     });
     const randomBtn = document.createElement("button");
     randomBtn.type = "button";
@@ -157,9 +239,7 @@
       const i = Math.floor(Math.random() * n);
       startCard(i);
     });
-    row2.appendChild(randomBtn);
-    list.appendChild(row1);
-    list.appendChild(row2);
+    list.appendChild(randomBtn);
     markDeckJumpCurrent();
   }
 
@@ -170,7 +250,7 @@
       const i = Number(btn.dataset.index);
       const on = i === state.cardIndex;
       btn.classList.toggle("is-current", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
     });
   }
 
@@ -212,6 +292,7 @@
     document.getElementById("footerNote").textContent =
       "每個題型會隨機出題（進位為難度變化）。完成後可再練一次；點錯沒關係，可以再選一次。";
     renderStep();
+    fitBoard();
   }
 
   function renderStep() {
@@ -221,6 +302,7 @@
       return;
     }
     const step = state.steps[state.stepIndex];
+    document.getElementById("stepPanel").scrollTop = 0;
     document.getElementById("stepLabel").textContent = `第 ${state.stepIndex + 1} 步，共 ${total} 步`;
     document.getElementById("progressFill").style.width = `${(state.stepIndex / total) * 100}%`;
     document.getElementById("phaseLabel").textContent = step.phase;
@@ -258,6 +340,7 @@
       highlights: step.highlights || [],
       autoCells: state.autoCells,
     });
+    revealCurrent();
 
     state.locked = false;
   }
@@ -277,6 +360,7 @@
       if (state.wrongCount >= 2) {
         state.hintLevel = Math.min(HINT_LEVELS, Math.max(state.hintLevel + 1, state.wrongCount));
         renderHint();
+        revealHint();
       }
       if (state.wrongCount >= 3) {
         const right = document.querySelector(`.choice[data-value="${step.answer}"]`);
@@ -314,7 +398,7 @@
       } else {
         renderStep();
       }
-    }, 1600);
+    }, advanceDelay());
   }
 
   /** 提示框顯示第 1 層到目前這一層；按鈕標示「提示 n/3」 */
@@ -341,6 +425,7 @@
     else if (level < HINT_LEVELS) hintBtn.textContent = `提示 ${level}/${HINT_LEVELS}・再給一個提示`;
     else hintBtn.textContent = `提示 ${level}/${HINT_LEVELS}・收起提示`;
     hintBtn.classList.toggle("active", level > 0);
+    hintBtn.setAttribute("aria-expanded", level > 0 ? "true" : "false");
   }
 
   function showComplete() {
@@ -360,6 +445,7 @@
 
     document.getElementById("stepActive").classList.add("hidden");
     document.getElementById("stepComplete").classList.remove("hidden");
+    document.getElementById("stepPanel").scrollTop = 0;
 
     const sum = document.getElementById("completeSum");
     const note = document.getElementById("completeNote");
@@ -381,43 +467,26 @@
     nextBtn.textContent = "再練一次";
   }
 
-  // ---------- tablet chrome: scroll lock + landscape gate ----------
-  function isLandscape() {
-    if (window.matchMedia) {
-      if (window.matchMedia("(orientation: landscape)").matches) return true;
-      if (window.matchMedia("(orientation: portrait)").matches) return false;
-    }
-    if (typeof window.orientation === "number") {
-      return Math.abs(window.orientation) === 90;
-    }
-    return window.innerWidth >= window.innerHeight;
-  }
-
-  function updateOrientOverlay() {
-    const el = document.getElementById("rotateOverlay");
-    if (!el) return;
-    const show = !isLandscape();
-    if (show) {
-      el.removeAttribute("hidden");
-      document.documentElement.classList.add("is-portrait");
-    } else {
-      el.setAttribute("hidden", "");
-      document.documentElement.classList.remove("is-portrait");
-    }
-  }
-
+  // ---------- 平板：鎖橡皮筋捲動（直向橫向都可用；不擋縮放） ----------
   function installScrollGuards() {
+    const scrollable = (style, axis, node) =>
+      (style[axis] === "auto" || style[axis] === "scroll") &&
+      (axis === "overflowY"
+        ? node.scrollHeight > node.clientHeight + 1
+        : node.scrollWidth > node.clientWidth + 1);
+
     document.addEventListener(
       "touchmove",
       (e) => {
+        // 兩指以上＝雙指縮放：一律放行
+        if (e.touches && e.touches.length > 1) return;
+        // 已放大時單指要能拖動畫面
+        if (window.visualViewport && window.visualViewport.scale > 1.01) return;
         let node = e.target;
         while (node && node !== document.body && node !== document.documentElement) {
           if (node.classList && node.classList.contains("scroll-ok")) {
             const style = window.getComputedStyle(node);
-            const canY =
-              (style.overflowY === "auto" || style.overflowY === "scroll") &&
-              node.scrollHeight > node.clientHeight + 1;
-            if (canY) return;
+            if (scrollable(style, "overflowY", node) || scrollable(style, "overflowX", node)) return;
             break;
           }
           node = node.parentNode;
@@ -426,19 +495,17 @@
       },
       { passive: false }
     );
+  }
 
-    const blockGesture = (e) => e.preventDefault();
-    document.addEventListener("gesturestart", blockGesture, { passive: false });
-    document.addEventListener("gesturechange", blockGesture, { passive: false });
-    document.addEventListener("gestureend", blockGesture, { passive: false });
-
-    document.addEventListener(
-      "touchstart",
-      (e) => {
-        if (e.touches && e.touches.length > 1) e.preventDefault();
-      },
-      { passive: false }
-    );
+  // ---------- 離線：service worker（file:// 不註冊） ----------
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    const { protocol, hostname } = window.location;
+    const local = hostname === "localhost" || hostname === "127.0.0.1";
+    if (!(protocol === "https:" || (protocol === "http:" && local))) return;
+    const register = () => navigator.serviceWorker.register("./sw.js").catch(() => {});
+    if (document.readyState === "complete") register();
+    else window.addEventListener("load", register);
   }
 
   function init() {
@@ -450,6 +517,7 @@
       // 0 → 1 → 2 → 3 → 收起 → 1 …
       state.hintLevel = (state.hintLevel + 1) % (HINT_LEVELS + 1);
       renderHint();
+      revealHint();
     });
     document.getElementById("nextCardBtn").addEventListener("click", () => {
       // 留在同一題型；startCard 會呼叫 generate() 重抽 a×b
@@ -461,14 +529,12 @@
     });
 
     installScrollGuards();
-    updateOrientOverlay();
-    window.addEventListener("resize", updateOrientOverlay);
-    window.addEventListener("orientationchange", updateOrientOverlay);
-    if (window.matchMedia) {
-      const mq = window.matchMedia("(orientation: landscape)");
-      if (mq.addEventListener) mq.addEventListener("change", updateOrientOverlay);
-      else if (mq.addListener) mq.addListener(updateOrientOverlay);
+    window.addEventListener("resize", fitBoard);
+    window.addEventListener("orientationchange", () => window.setTimeout(fitBoard, 200));
+    if (window.ResizeObserver) {
+      new ResizeObserver(fitBoard).observe(document.getElementById("boardArea"));
     }
+    registerServiceWorker();
   }
 
   if (typeof document !== "undefined" && document.readyState !== "loading") {

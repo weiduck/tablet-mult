@@ -1,0 +1,14 @@
+# 暫存／檢查用雜檔（不要進公開 repo）
+_*
+*.tmp
+*.log
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+
+# 本機參考素材（已移到 ../_tablet-mult-scratch/）
+muse-ref/
+PROMPT-muse.md

@@ -76,7 +76,6 @@ python3 -m http.server 8765
 - `app.js` — 一步一問引擎（位值階段／提示）＋ 12 題型產生器／方向提示／觸控鎖
 - `manifest.webmanifest` — 主畫面名稱「直式乘法」、landscape、standalone
 - `apple-touch-icon.png` / `icon-192.png` / `icon-512.png` — 圖示
-- `muse-ref/` — 參考截圖（01～09）
 - `README.md` — 本說明
 
 ## 明確不做

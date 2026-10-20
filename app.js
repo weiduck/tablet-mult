@@ -221,6 +221,9 @@
       btn.type = "button";
       btn.className = "deck-jump-btn";
       btn.dataset.index = String(i);
+      const full = type.stage ? `題型 ${i + 1}：${type.stage}` : `題型 ${i + 1}`;
+      btn.title = full;
+      btn.setAttribute("aria-label", full);
       const stage = type.stage
         ? `<span class="dj-stage">${type.stage}</span>`
         : "";
